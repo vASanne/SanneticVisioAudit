@@ -2,11 +2,12 @@
 
 **Project Specification & Cursor Instructions**
 
-**Version:** 1.1  
+**Version:** 1.2  
 **Date:** 15 November 2026  
 **Purpose:** Complete guide for developing a mature SEO and GEO analysis tool as an agency unique selling proposition.
 
-**Changelog:** 1.1 — Full English translation; added Section 3 “Design System & UI Guidelines,” integrating the Sannetic design system.
+**Changelog:** 1.1 — Full English translation; added Section 3 “Design System & UI Guidelines,” integrating the Sannetic design system.  
+**Changelog:** 1.2 — Brand tokens updated to the logo-aligned palette (SanneticDesign commit `929dbad`).
 
 ---
 
@@ -81,7 +82,7 @@ Recommended shadcn/ui mapping (Sannetic name → shadcn variable):
 | `--color-text` | `--foreground` | Light `var(--color-gray-900)` / `#0f172a`; dark `#f1f5f9` |
 | `--color-surface` | `--card`, `--popover` | Light `#ffffff`; dark `#1e293b` |
 | `--color-text` | `--card-foreground`, `--popover-foreground` | |
-| `--color-primary` (`#10b981`) | `--primary` | |
+| `--color-primary` (`#1CC4A0`) | `--primary` | |
 | `--color-white` (`#ffffff`) | `--primary-foreground` | Matches `.btn-primary` text (`white`) |
 | `--color-bg-secondary` | `--secondary`, `--muted` | Light `var(--color-gray-50)` / `#f8fafc`; dark `#1e293b` |
 | `--color-text` | `--secondary-foreground` | |
@@ -89,10 +90,10 @@ Recommended shadcn/ui mapping (Sannetic name → shadcn variable):
 | `--color-error` (`#ef4444`) | `--destructive` | |
 | `--color-white` | `--destructive-foreground` | |
 | `--color-border` | `--border`, `--input` | Light `#e2e8f0`; dark `#334155` |
-| `--color-accent` (`#06b6d4`) | `--ring` | Focus color in the styleguide |
+| `--color-accent` (`#08C2D4`) | `--ring` | Focus color in the styleguide |
 | `--radius-md` (`0.5rem`) or `--radius-lg` (`0.75rem`) | `--radius` | Buttons use `--radius-lg`; inputs use `--radius-md`; cards use `--radius-xl` (`1rem`) |
 
-**Naming collision:** Sannetic `--color-accent` is brand cyan (`#06b6d4`). shadcn’s `--accent` is typically a subtle hover surface, not a brand color. Do **not** map `--color-accent` onto shadcn `--accent`. Expose cyan as a dedicated token (for example `--sannetic-accent` / Tailwind `accent`) and, if a muted hover surface is needed, use `--color-bg-secondary` or `--color-surface-elevated`.
+**Naming collision:** Sannetic `--color-accent` is brand cyan (`#08C2D4`). shadcn’s `--accent` is typically a subtle hover surface, not a brand color. Do **not** map `--color-accent` onto shadcn `--accent`. Expose cyan as a dedicated token (for example `--sannetic-accent` / Tailwind `accent`) and, if a muted hover surface is needed, use `--color-bg-secondary` or `--color-surface-elevated`.
 
 Light mode is the typography/base default in `:root`. Dark mode is activated with `[data-theme="dark"]` or `.dark`.
 
@@ -102,13 +103,13 @@ Light mode is the typography/base default in `:root`. Dark mode is activated wit
 
 | Token | Value | CSS comment / role |
 |-------|-------|--------------------|
-| `--color-primary` | `#10b981` | Emerald Green |
-| `--color-primary-hover` | `#059669` | Primary hover (`.btn-primary:hover`) |
-| `--color-primary-light` | `#34d399` | Lighter primary |
-| `--color-accent` | `#06b6d4` | Cyan; links, focus, info |
-| `--color-accent-hover` | `#0891b2` | Link / accent hover |
-| `--color-accent-light` | `#22d3ee` | Lighter cyan |
-| `--color-gradient` | `linear-gradient(135deg, #10b981 0%, #06b6d4 100%)` | Brand gradient (`.btn-gradient`, `.text-gradient`) |
+| `--color-primary` | `#1CC4A0` | Teal (logo gradient mid) |
+| `--color-primary-hover` | `#17A183` | Primary hover (`.btn-primary:hover`) |
+| `--color-primary-light` | `#40E4C0` | Lighter primary |
+| `--color-accent` | `#08C2D4` | Cyan (logo gradient end); links, focus |
+| `--color-accent-hover` | `#079FAE` | Link / accent hover |
+| `--color-accent-light` | `#27E5F7` | Lighter cyan |
+| `--color-gradient` | `linear-gradient(135deg, #8FD11B 0%, #1CC4A0 50%, #08C2D4 100%)` | Brand gradient (`.btn-gradient`, `.text-gradient`) |
 
 **Neutrals:**
 
@@ -321,7 +322,7 @@ Reference files by path in [SanneticDesign](https://github.com/vASanne/SanneticD
 - The lockup includes the wordmark “Sannetic” and the tagline “Software. Intelligence.” Letterforms in the logo files are path outlines; they have no live font dependency.
 - Animated usage: mount `SanneticDesign/logo/animated/sannetic-symbol.js` only where motion adds value (marketing or an empty/loading state), and honor `prefers-reduced-motion` (the bundle’s `reducedMotion: 'auto'` default already does this).
 
-**Logo mark vs. UI tokens:** The logo identity README documents a mark gradient `#8FD11B → #1CC4A0 → #08C2D4` and preview grounds `#1A1714` / `#F4F1EC`. Those colors are **not** in `sannetic-styleguide.css`. Product UI, charts, and report chrome must use the CSS tokens (`--color-primary` `#10b981`, `--color-accent` `#06b6d4`, `--color-gradient`, theme surfaces above). Do not mix the logo-preview grounds or mark-only hex values into the application palette.
+**Logo mark vs. UI tokens:** Since SanneticDesign commit `929dbad`, the web brand tokens are aligned with the logo mark gradient `#8FD11B → #1CC4A0 → #08C2D4` (`--color-primary` `#1CC4A0`, `--color-accent` `#08C2D4`, `--color-gradient`). The semantic tokens `--color-success` (`#10b981`) and `--color-info` (`#06b6d4`) intentionally keep their previous values, so status colors stay distinct from brand colors. The logo preview grounds `#1A1714` / `#F4F1EC` are not part of `sannetic-styleguide.css`; do not mix them into the application palette.
 
 ### 3.10 Accessibility
 
