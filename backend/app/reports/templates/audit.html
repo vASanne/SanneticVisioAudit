@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <title>Audit {{ client_name }}</title>
+  <style>
+    :root {
+      --paper: #f4efe6;
+      --ink: #1c2421;
+      --muted: #5e675f;
+      --line: #ddd2c2;
+      --card: #fffaf3;
+      --accent: #c84b1a;
+      --pine: #1f6a4a;
+      --critical: #8e1b2a;
+      --high: #9a4d0f;
+      --medium: #8a6a12;
+      --low: #3f5c57;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font: 16px/1.5 "Avenir Next", "Segoe UI", sans-serif;
+    }
+    main { max-width: 920px; margin: 0 auto; padding: 48px 24px 72px; }
+    header { display: flex; justify-content: space-between; gap: 24px; align-items: flex-end; border-bottom: 1px solid var(--ink); padding-bottom: 20px; }
+    .mark { font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase; }
+    h1 { font: 500 40px/1.1 Georgia, "Iowan Old Style", serif; margin: 8px 0 0; }
+    .meta { color: var(--muted); margin: 8px 0 0; }
+    .scores { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 28px 0; }
+    .score { background: var(--card); border: 1px solid var(--line); padding: 16px 18px; }
+    .score span { display: block; color: var(--muted); font-size: 13px; letter-spacing: 0.04em; text-transform: uppercase; }
+    .score strong { display: block; margin-top: 6px; font: 500 42px/1 Georgia, serif; }
+    .summary { font-size: 18px; }
+    article { background: var(--card); border: 1px solid var(--line); border-left: 4px solid var(--accent); padding: 16px 18px; margin: 12px 0; }
+    article.critical { border-left-color: var(--critical); }
+    article.high { border-left-color: var(--high); }
+    article.medium { border-left-color: var(--medium); }
+    article.low { border-left-color: var(--low); }
+    .badge { display: inline-block; font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; margin-right: 8px; }
+    h2 { font: 500 22px/1.2 Georgia, serif; margin: 28px 0 8px; }
+    h3 { margin: 0 0 6px; font-size: 18px; }
+    p { margin: 6px 0; }
+    ul { margin: 8px 0 0; padding-left: 18px; }
+    table { width: 100%; border-collapse: collapse; background: var(--card); }
+    th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; font-size: 14px; }
+    th { font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+    a { color: inherit; }
+    footer { margin-top: 36px; color: var(--muted); font-size: 13px; }
+    .empty { background: #e7f2ec; border: 1px solid #b7d4c4; padding: 14px 16px; }
+    @media print {
+      body { background: white; }
+      main { padding: 0; }
+      article, .score, table { break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <div class="mark">Sannetic Vision Audit</div>
+        <h1>{{ client_name }}</h1>
+        <p class="meta"><a href="{{ url }}">{{ url }}</a></p>
+      </div>
+      <p class="meta">{{ generated_label }}<br>{{ pages_crawled }} Seiten</p>
+    </header>
+
+    <section class="scores">
+      <div class="score"><span>Gesamt</span><strong>{{ scores.overall if scores.overall is not none else "–" }}</strong></div>
+      <div class="score"><span>SEO</span><strong>{{ scores.seo if scores.seo is not none else "–" }}</strong></div>
+      <div class="score"><span>GEO</span><strong>{{ scores.geo if scores.geo is not none else "–" }}</strong></div>
+    </section>
+
+    {% if total_count %}
+      <p class="summary">{{ passed_count }} von {{ total_count }} ausgeführten Checks sind bestanden.</p>
+    {% endif %}
+
+    <h2>Handlungsbedarf</h2>
+    {% if issues %}
+      {% for issue in issues %}
+        <article class="{{ issue.severity }}">
+          <div>
+            <span class="badge">{{ labels.get(issue.severity, issue.severity) }}</span>
+            {% if issue.quick_win %}<span class="badge">Schnell umsetzbar</span>{% endif %}
+          </div>
+          <h3>{{ issue.title }}</h3>
+          <p>{{ issue.description }}</p>
+          <p><strong>Empfehlung.</strong> {{ issue.recommendation }}</p>
+          {% if issue.affected_urls %}
+            <ul>
+              {% for item in issue.affected_urls[:20] %}
+                <li><a href="{{ item }}">{{ item }}</a></li>
+              {% endfor %}
+            </ul>
+            {% if issue.affected_urls|length > 20 %}
+              <p>und {{ issue.affected_urls|length - 20 }} weitere URLs</p>
+            {% endif %}
+          {% endif %}
+        </article>
+      {% endfor %}
+    {% else %}
+      <p class="empty">In den geprüften Checks gibt es keine offenen Punkte.</p>
+    {% endif %}
+
+    {% if pages %}
+      <h2>Gelesene Seiten</h2>
+      <table>
+        <thead><tr><th>Status</th><th>Title</th><th>URL</th></tr></thead>
+        <tbody>
+          {% for page in pages %}
+            <tr>
+              <td>{{ page.status_code if page.status_code is not none else "–" }}</td>
+              <td>{{ page.title or "—" }}</td>
+              <td><a href="{{ page.url }}">{{ page.url }}</a></td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% endif %}
+
+    <footer>
+      <p>{{ methodology }}</p>
+      <p>Technik {{ scores.technical if scores.technical is not none else "–" }} · On-Page {{ scores.onpage if scores.onpage is not none else "–" }}</p>
+    </footer>
+  </main>
+</body>
+</html>
