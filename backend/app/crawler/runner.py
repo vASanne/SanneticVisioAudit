@@ -12,12 +12,13 @@ import structlog
 
 from app.crawler.errors import UnsafeUrlError
 from app.crawler.robots import RobotsPolicy
-from app.crawler.safety import assert_public_url
+from app.crawler.safety import assert_public_url, public_connect_host
 from app.crawler.types import CrawledPage, CrawlOutput
-from app.crawler.urls import crawl_key, is_skippable_path, same_site
+from app.crawler.urls import crawl_key, is_skippable_path, repeats_document, same_site
 from app.extractors.html_extract import extract_links, looks_like_html
 
 MAX_BODY_BYTES = 2_000_000
+MAX_REDIRECTS = 5
 logger = structlog.get_logger()
 
 
@@ -29,6 +30,7 @@ class CrawlOptions:
     max_pages: int
     follow_links: bool
     delay_seconds: float
+    render_js: bool = False
 
 
 async def crawl_site(start_url: str, options: CrawlOptions) -> CrawlOutput:
@@ -55,17 +57,25 @@ async def crawl_site(start_url: str, options: CrawlOptions) -> CrawlOutput:
         headers=headers,
         follow_redirects=True,
         timeout=timeout,
-        max_redirects=5,
+        max_redirects=MAX_REDIRECTS,
+        transport=_PinnedTransport(),
         event_hooks={"request": [guard]},
     ) as client:
         robots_status, robots_body = await _fetch_robots(client, robots_url)
         policy = RobotsPolicy(robots_body, robots_status)
+        origin = f"{parts.scheme}://{parts.netloc}"
+        discovery = await _discover(client, policy, origin)
         if not policy.allowed(options.user_agent, start_url):
             return CrawlOutput(
                 pages=(),
                 robots_txt=robots_body,
                 robots_status=robots_status,
                 blocked_by_robots=True,
+                sitemap_status=discovery[0],
+                sitemap_count=discovery[1],
+                llms_status=discovery[2],
+                llms_words=discovery[3],
+                ai_txt_status=discovery[4],
             )
 
         delay = min(10.0, max(options.delay_seconds, policy.crawl_delay(options.user_agent)))
@@ -92,13 +102,83 @@ async def crawl_site(start_url: str, options: CrawlOptions) -> CrawlOutput:
                 if key in seen:
                     continue
                 seen.add(key)
-                queue.append(key)
+                queue.append(link)
         return CrawlOutput(
             pages=tuple(pages),
             robots_txt=robots_body,
             robots_status=robots_status,
             blocked_by_robots=False,
+            sitemap_status=discovery[0],
+            sitemap_count=discovery[1],
+            llms_status=discovery[2],
+            llms_words=discovery[3],
+            ai_txt_status=discovery[4],
         )
+
+
+class _PinnedTransport(httpx.AsyncHTTPTransport):
+    """Open the socket to the address that just passed the public-host check."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        from httpcore._backends.anyio import AnyIOBackend
+
+        class _PinnedBackend(AnyIOBackend):
+            async def connect_tcp(
+                self,
+                host: str,
+                port: int,
+                timeout: float | None = None,
+                local_address: str | None = None,
+                socket_options: object = None,
+            ) -> object:
+                pinned = public_connect_host(host)
+                return await super().connect_tcp(
+                    pinned,
+                    port,
+                    timeout=timeout,
+                    local_address=local_address,
+                    socket_options=socket_options,  # type: ignore[arg-type]
+                )
+
+        self._pool._network_backend = _PinnedBackend()
+
+
+async def _discover(
+    client: httpx.AsyncClient,
+    policy: RobotsPolicy,
+    origin: str,
+) -> tuple[int | None, int | None, int | None, int, int | None]:
+    """Fetch the first sitemap plus llms.txt and ai.txt. Status None means not requested."""
+
+    sitemap_status: int | None = None
+    sitemap_count: int | None = None
+    maps = policy.sitemaps()
+    if maps:
+        page = await _fetch(client, maps[0])
+        sitemap_status = page.status_code or None
+        if page.status_code == 200 and page.body:
+            sitemap_count = _sitemap_locations(page.body)
+    llms = await _fetch(client, f"{origin}/llms.txt")
+    ai_txt = await _fetch(client, f"{origin}/ai.txt")
+    words = len(llms.body.split()) if llms.status_code == 200 else 0
+    return sitemap_status, sitemap_count, llms.status_code or None, words, ai_txt.status_code or None
+
+
+def _sitemap_locations(body: bytes) -> int | None:
+    head = body[:8000].lower()
+    if b"<urlset" not in head and b"<sitemapindex" not in head:
+        return None
+    return body.lower().count(b"<loc>")
+
+
+def _selected_headers(response: httpx.Response) -> tuple[tuple[str, str], ...]:
+    found: list[tuple[str, str]] = []
+    for name in ("strict-transport-security", "content-security-policy", "x-content-type-options"):
+        value = response.headers.get(name)
+        if value:
+            found.append((name, value))
+    return tuple(found)
 
 
 async def _sleep(delay: float) -> None:
@@ -122,33 +202,34 @@ async def _fetch(client: httpx.AsyncClient, url: str) -> CrawledPage:
             body = await _read_limited(response, MAX_BODY_BYTES)
             history = [str(item.url) for item in response.history]
             final_url = str(response.url)
-            chain = history + [final_url]
             robots_values = response.headers.get_list("x-robots-tag")
             return CrawledPage(
                 requested_url=url,
                 final_url=final_url,
                 status_code=response.status_code,
                 redirect_count=len(response.history),
-                redirect_loop=len(chain) != len({crawl_key(item) for item in chain}),
+                redirect_loop=repeats_document(history + [final_url]),
                 content_type=response.headers.get("content-type", ""),
                 header_robots=", ".join(robots_values) if robots_values else None,
                 body=body,
+                link_headers=tuple(response.headers.get_list("link")),
+                response_headers=_selected_headers(response),
             )
     except UnsafeUrlError:
         return _failed(url, "Eine Weiterleitung auf eine nicht öffentliche Adresse wurde blockiert.")
     except httpx.TooManyRedirects:
-        return _failed(url, "Zu viele Weiterleitungen.", redirect_loop=True)
+        return _failed(url, "Zu viele Weiterleitungen.", redirect_count=MAX_REDIRECTS + 1)
     except httpx.HTTPError:
         logger.warning("fetch_failed", url=url)
         return _failed(url, "Die Seite konnte nicht geladen werden.")
 
 
-def _failed(url: str, message: str, *, redirect_loop: bool = False) -> CrawledPage:
+def _failed(url: str, message: str, *, redirect_loop: bool = False, redirect_count: int = 0) -> CrawledPage:
     return CrawledPage(
         requested_url=url,
         final_url=url,
         status_code=0,
-        redirect_count=0,
+        redirect_count=redirect_count,
         redirect_loop=redirect_loop,
         content_type="",
         header_robots=None,

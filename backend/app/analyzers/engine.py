@@ -1,35 +1,101 @@
-"""Run the MVP check set and collapse page results into one finding per check.
+"""Run the implemented checks and collapse page results into one finding per check.
 
-Implemented now, matching the first implementation step in the specification:
-T01–T05, O01–O03, G01, and G04. The remaining checks in section 3 are not scored
-and are not treated as passed.
+Covered now: T01–T15 except T09 unless a PageSpeed key is configured, O01–O10,
+G01–G14, and X01–X04. Checks that are not run are omitted and are not counted
+as passed.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
 
-from app.analyzers.geo.discovery import check_ai_crawlers, check_server_rendered
-from app.analyzers.seo.onpage import check_h1, check_meta_description, check_title
+from app.analyzers.cross import (
+    check_accessibility,
+    check_content_quality,
+    check_indexability,
+    check_security_headers,
+)
+from app.analyzers.geo.content import (
+    check_answer_first,
+    check_citability,
+    check_entity_clarity,
+    check_experience,
+    check_extractable,
+    check_faq,
+    check_freshness,
+    check_statistics,
+)
+from app.analyzers.geo.discovery import (
+    check_ai_crawlers,
+    check_ai_discovery,
+    check_entity_schema,
+    check_llms_txt,
+    check_server_rendered,
+    check_training_split,
+)
+from app.analyzers.performance import check_pagespeed
+from app.analyzers.seo.content import (
+    check_content_length,
+    check_headings,
+    check_image_alt,
+    check_keyword_use,
+    check_social_tags,
+)
+from app.analyzers.seo.extended import (
+    check_duplicates,
+    check_hreflang,
+    check_html_size,
+    check_internal_links,
+    check_sitemap,
+)
+from app.analyzers.seo.onpage import (
+    check_h1,
+    check_meta_description,
+    check_schema_validity,
+    check_structured_data,
+    check_title,
+)
 from app.analyzers.seo.technical import (
+    check_broken_links,
     check_canonical,
+    check_https,
+    check_javascript,
     check_noindex,
     check_redirects,
     check_robots_txt,
     check_status_code,
+    check_viewport,
 )
 from app.domain import CheckResult, PageSnapshot, SiteContext
 
-PageCheck = Callable[[PageSnapshot], CheckResult]
+PageCheck = Callable[[PageSnapshot], CheckResult | None]
 
-_ALWAYS: tuple[PageCheck, ...] = (check_status_code, check_redirects)
+_ALWAYS: tuple[PageCheck, ...] = (check_status_code, check_redirects, check_https)
 _HTML_200: tuple[PageCheck, ...] = (
+    check_html_size,
     check_canonical,
     check_noindex,
+    check_viewport,
+    check_javascript,
     check_title,
     check_meta_description,
     check_h1,
+    check_headings,
+    check_image_alt,
+    check_content_length,
+    check_social_tags,
+    check_structured_data,
+    check_schema_validity,
+    check_keyword_use,
     check_server_rendered,
+    check_answer_first,
+    check_extractable,
+    check_statistics,
+    check_entity_clarity,
+    check_faq,
+    check_freshness,
+    check_experience,
+    check_content_quality,
 )
 
 
@@ -49,6 +115,36 @@ def run_checks(context: SiteContext) -> list[CheckResult]:
         results.append(_blocked_start(context))
     results.append(check_robots_txt(context))
     results.append(check_ai_crawlers(context))
+    results.append(check_sitemap(context))
+    results.append(check_training_split(context))
+    results.append(check_llms_txt(context))
+    results.append(check_ai_discovery(context))
+    broken = check_broken_links(context)
+    if broken is not None:
+        results.append(broken)
+    links = check_internal_links(context)
+    if links is not None:
+        results.append(links)
+    hreflang = check_hreflang(context)
+    if hreflang is not None:
+        results.append(hreflang)
+    duplicates = check_duplicates(context)
+    if duplicates is not None:
+        results.append(duplicates)
+    results.append(check_indexability(context))
+    headers = check_security_headers(context)
+    if headers is not None:
+        results.append(headers)
+    access = check_accessibility(context)
+    if access is not None:
+        results.append(access)
+    results.append(check_entity_schema(context))
+    speed = check_pagespeed(context)
+    if speed is not None:
+        results.append(speed)
+    citability = check_citability(results)
+    if citability is not None:
+        results.append(citability)
     return results
 
 
@@ -76,13 +172,24 @@ def aggregate(results: list[CheckResult]) -> CheckResult:
         severity=sample.severity,
         title=sample.title,
         description=summary,
-        recommendation=sample.recommendation,
+        recommendation=_recommendation(chosen),
         affected_urls=urls,
         quick_win=sample.quick_win,
     )
 
 
-def _collect(grouped: dict[str, list[CheckResult]], item: CheckResult) -> None:
+def _recommendation(chosen: list[CheckResult]) -> str:
+    """Keep a page-specific recommendation when failures do not share one text."""
+
+    unique = list(dict.fromkeys(item.recommendation for item in chosen if item.recommendation))
+    if len(unique) < 2:
+        return unique[0] if unique else chosen[0].recommendation
+    return f"{unique[0]} {unique[1]}"
+
+
+def _collect(grouped: dict[str, list[CheckResult]], item: CheckResult | None) -> None:
+    if item is None:
+        return
     grouped.setdefault(item.check_id, []).append(item)
 
 

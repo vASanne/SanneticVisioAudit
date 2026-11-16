@@ -20,7 +20,14 @@ COPY --link docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod 755 /usr/local/bin/docker-entrypoint.sh
 ENV PATH="/opt/venv/bin:$PATH" \
     PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libatomic1 \
+    && rm -rf /var/lib/apt/lists/* \
+    && playwright install-deps chromium \
+    && playwright install chromium \
+    && chown -R 1001:1001 /ms-playwright
 USER appuser
 EXPOSE 8000
 LABEL org.opencontainers.image.title="Sannetic Vision Audit API" \

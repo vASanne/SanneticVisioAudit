@@ -20,6 +20,17 @@ x-backend-env: &backend-env
   LOG_FORMAT: console
   PYTHONDONTWRITEBYTECODE: "1"
   PYTHONUNBUFFERED: "1"
+  PAGESPEED_API_KEY: ${PAGESPEED_API_KEY:-}
+  AUTH_SECRET: ${AUTH_SECRET:-REDACTED}
+  AGENCY_EMAIL: ${AGENCY_EMAIL:-admin@sannetic.local}
+  AGENCY_PASSWORD: ${AGENCY_PASSWORD:-REDACTED}
+  AGENCY_NAME: ${AGENCY_NAME:-Sannetic}
+  GSC_ACCESS_TOKEN: ${GSC_ACCESS_TOKEN:-}
+  LLM_API_KEY: ${LLM_API_KEY:-}
+  LLM_API_URL: ${LLM_API_URL:-https://api.openai.com/v1/chat/completions}
+  LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
+  MAX_PAGES_CAP: ${MAX_PAGES_CAP:-500}
+  MAX_LINK_PROBES: ${MAX_LINK_PROBES:-200}
 
 services:
   db:
@@ -102,6 +113,23 @@ services:
     environment:
       <<: *backend-env
     command: ["python", "-m", "celery", "-A", "app.tasks.celery_app:celery_app", "worker", "--loglevel=info", "--concurrency=2"]
+    depends_on:
+      api:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  beat:
+    image: visioaudit-backend:local
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    environment:
+      <<: *backend-env
+    command: ["python", "-m", "celery", "-A", "app.tasks.celery_app:celery_app", "beat", "--loglevel=info"]
     depends_on:
       api:
         condition: service_healthy

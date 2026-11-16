@@ -12,6 +12,11 @@ docker compose up --build
 - Dashboard: http://127.0.0.1:3000
 - API-Dokumentation: http://127.0.0.1:8000/docs
 
+URL: http://127.0.0.1:3000/login
+E-Mail: admin@sannetic.local
+Passwort: REDACTED
+
+
 `docker compose up` lädt zusätzlich `compose.override.yaml`: Quellcode ist gemountet, die API startet mit Reload, Postgres und MinIO sind nur auf localhost erreichbar. Redis wird auf `127.0.0.1:63799` gelegt, damit ein bereits belegter Port 6379 nicht kollidiert.
 
 Ohne diese Entwicklungseinstellungen:

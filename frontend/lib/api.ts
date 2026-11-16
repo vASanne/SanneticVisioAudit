@@ -5,6 +5,7 @@ export type CheckStatus = "pass" | "warning" | "fail";
 export interface AuditSummary {
   id: string;
   client_name: string;
+  client_id?: string | null;
   url: string;
   status: AuditStatus;
   created_at: string;
@@ -33,6 +34,7 @@ export interface Issue {
   affected_urls: string[];
   status: CheckStatus;
   quick_win: boolean;
+  impact_score?: number | null;
 }
 
 export interface Score {
@@ -47,17 +49,107 @@ export interface AuditDetail extends AuditSummary {
   pages: PageRow[];
   issues: Issue[];
   scores: Score[];
+  llm_summary?: string | null;
+  gsc_notes?: string[];
 }
 
 export interface AuditInput {
   url: string;
   max_pages: number;
   follow_links: boolean;
+  render_js: boolean;
+  probe_internal_links: boolean;
+  llm_summary: boolean;
   client_name: string;
+  client_id?: string | null;
 }
+
+export interface ClientRow {
+  id: string;
+  name: string;
+  domain: string | null;
+  logo_url: string | null;
+  settings: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface ScheduleRow {
+  id: string;
+  client_id: string;
+  client_name: string;
+  url: string;
+  cron: string;
+  enabled: boolean;
+  config: Record<string, unknown>;
+  last_run_at: string | null;
+  next_run_at: string | null;
+  created_at?: string;
+}
+
+export interface WatchlistRow {
+  id: string;
+  client_id: string;
+  client_name: string;
+  url: string;
+  label: string;
+  notes: string;
+  enabled: boolean;
+  schedule_id: string | null;
+  renew_enabled: boolean;
+  cron: string | null;
+  config: Record<string, unknown>;
+  last_audit_id: string | null;
+  last_overall_score: number | null;
+  last_checked_at: string | null;
+  next_run_at: string | null;
+  created_at: string;
+}
+
+export interface UserRow {
+  id: string;
+  email: string;
+  name: string;
+  is_admin: boolean;
+  client_ids: string[];
+  created_at: string;
+}
+
+export interface AuthStatus {
+  auth_required: boolean;
+  authenticated: boolean;
+  user_name: string | null;
+  email: string | null;
+  is_admin: boolean;
+}
+
+export interface LoginResult {
+  access_token: string;
+  token_type: string;
+  user_name: string;
+  email: string;
+  is_admin: boolean;
+}
+
+const TOKEN_KEY = "visioaudit-token";
 
 export function apiBase(): string {
   return process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
+}
+
+export function getToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return window.localStorage.getItem(TOKEN_KEY);
+}
+
+export function setToken(token: string | null): void {
+  if (typeof window === "undefined") return;
+  if (token) window.localStorage.setItem(TOKEN_KEY, token);
+  else window.localStorage.removeItem(TOKEN_KEY);
+}
+
+function authHeaders(): HeadersInit {
+  const token = getToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
 async function readError(response: Response): Promise<string> {
@@ -75,24 +167,199 @@ async function readError(response: Response): Promise<string> {
   return `Anfrage fehlgeschlagen (${response.status}).`;
 }
 
-export async function createAudit(input: AuditInput): Promise<AuditDetail> {
-  const response = await fetch(`${apiBase()}/api/v1/audits`, {
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(`${apiBase()}${path}`, {
+    ...init,
+    headers: {
+      ...(init?.body ? { "Content-Type": "application/json" } : {}),
+      ...authHeaders(),
+      ...(init?.headers || {}),
+    },
+    cache: "no-store",
+  });
+  if (response.status === 204) return undefined as T;
+  if (!response.ok) throw new Error(await readError(response));
+  return (await response.json()) as T;
+}
+
+export async function getAuthStatus(): Promise<AuthStatus> {
+  return request<AuthStatus>("/api/v1/auth/status");
+}
+
+export async function login(email: string, password: string): Promise<LoginResult> {
+  const response = await fetch(`${apiBase()}/api/v1/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input),
+    body: JSON.stringify({ email, password }),
   });
   if (!response.ok) throw new Error(await readError(response));
-  return (await response.json()) as AuditDetail;
+  return (await response.json()) as LoginResult;
+}
+
+export async function createAudit(input: AuditInput): Promise<AuditDetail> {
+  return request<AuditDetail>("/api/v1/audits", { method: "POST", body: JSON.stringify(input) });
 }
 
 export async function listAudits(): Promise<AuditSummary[]> {
-  const response = await fetch(`${apiBase()}/api/v1/audits`, { cache: "no-store" });
-  if (!response.ok) throw new Error(await readError(response));
-  return (await response.json()) as AuditSummary[];
+  return request<AuditSummary[]>("/api/v1/audits");
 }
 
 export async function getAudit(id: string): Promise<AuditDetail> {
-  const response = await fetch(`${apiBase()}/api/v1/audits/${id}`, { cache: "no-store" });
+  return request<AuditDetail>(`/api/v1/audits/${id}`);
+}
+
+export async function listClients(): Promise<ClientRow[]> {
+  return request<ClientRow[]>("/api/v1/clients");
+}
+
+export async function createClient(input: {
+  name: string;
+  domain?: string | null;
+  logo_url?: string | null;
+  settings?: Record<string, unknown>;
+}): Promise<ClientRow> {
+  return request<ClientRow>("/api/v1/clients", { method: "POST", body: JSON.stringify(input) });
+}
+
+export async function updateClient(
+  id: string,
+  input: {
+    name?: string;
+    domain?: string | null;
+    logo_url?: string | null;
+    settings?: Record<string, unknown>;
+  },
+): Promise<ClientRow> {
+  return request<ClientRow>(`/api/v1/clients/${id}`, { method: "PATCH", body: JSON.stringify(input) });
+}
+
+export async function deleteClient(id: string): Promise<void> {
+  await request<void>(`/api/v1/clients/${id}`, { method: "DELETE" });
+}
+
+export async function listUsers(): Promise<UserRow[]> {
+  return request<UserRow[]>("/api/v1/users");
+}
+
+export async function createUser(input: {
+  email: string;
+  name: string;
+  password: string;
+  is_admin: boolean;
+  client_ids: string[];
+}): Promise<UserRow> {
+  return request<UserRow>("/api/v1/users", { method: "POST", body: JSON.stringify(input) });
+}
+
+export async function updateUser(
+  id: string,
+  input: {
+    email?: string;
+    name?: string;
+    password?: string;
+    is_admin?: boolean;
+    client_ids?: string[];
+  },
+): Promise<UserRow> {
+  return request<UserRow>(`/api/v1/users/${id}`, { method: "PATCH", body: JSON.stringify(input) });
+}
+
+export async function deleteUser(id: string): Promise<void> {
+  await request<void>(`/api/v1/users/${id}`, { method: "DELETE" });
+}
+
+export async function listWatchlist(): Promise<WatchlistRow[]> {
+  return request<WatchlistRow[]>("/api/v1/watchlist");
+}
+
+export async function createWatchlistItem(input: {
+  client_id: string;
+  url: string;
+  label?: string;
+  notes?: string;
+  enabled?: boolean;
+  renew_enabled?: boolean;
+  cron?: string;
+  config?: Record<string, unknown>;
+}): Promise<WatchlistRow> {
+  return request<WatchlistRow>("/api/v1/watchlist", { method: "POST", body: JSON.stringify(input) });
+}
+
+export async function updateWatchlistItem(
+  id: string,
+  input: {
+    label?: string;
+    notes?: string;
+    enabled?: boolean;
+    renew_enabled?: boolean;
+    cron?: string;
+    config?: Record<string, unknown>;
+    url?: string;
+  },
+): Promise<WatchlistRow> {
+  return request<WatchlistRow>(`/api/v1/watchlist/${id}`, { method: "PATCH", body: JSON.stringify(input) });
+}
+
+export async function deleteWatchlistItem(id: string): Promise<void> {
+  await request<void>(`/api/v1/watchlist/${id}`, { method: "DELETE" });
+}
+
+export async function listSchedules(): Promise<ScheduleRow[]> {
+  return request<ScheduleRow[]>("/api/v1/schedules");
+}
+
+export async function createSchedule(input: {
+  client_id: string;
+  url: string;
+  cron: string;
+  enabled?: boolean;
+  config?: Record<string, unknown>;
+}): Promise<ScheduleRow> {
+  return request<ScheduleRow>("/api/v1/schedules", {
+    method: "POST",
+    body: JSON.stringify({ enabled: true, config: { max_pages: 25 }, ...input }),
+  });
+}
+
+export async function updateSchedule(
+  id: string,
+  input: {
+    url?: string;
+    cron?: string;
+    enabled?: boolean;
+    config?: Record<string, unknown>;
+  },
+): Promise<ScheduleRow> {
+  return request<ScheduleRow>(`/api/v1/schedules/${id}`, { method: "PATCH", body: JSON.stringify(input) });
+}
+
+export async function deleteSchedule(id: string): Promise<void> {
+  await request<void>(`/api/v1/schedules/${id}`, { method: "DELETE" });
+}
+
+export function reportHtmlUrl(id: string): string {
+  return `${apiBase()}/api/v1/audits/${id}/report`;
+}
+
+export function reportPdfUrl(id: string): string {
+  return `${apiBase()}/api/v1/audits/${id}/report.pdf`;
+}
+
+export async function openReport(id: string, format: "html" | "pdf"): Promise<void> {
+  const url = format === "pdf" ? reportPdfUrl(id) : reportHtmlUrl(id);
+  const response = await fetch(url, { headers: authHeaders() });
   if (!response.ok) throw new Error(await readError(response));
-  return (await response.json()) as AuditDetail;
+  const blob = await response.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  const opened = window.open(objectUrl, "_blank", "noopener,noreferrer");
+  if (!opened) {
+    const anchor = document.createElement("a");
+    anchor.href = objectUrl;
+    anchor.download = format === "pdf" ? `audit-${id}.pdf` : `audit-${id}.html`;
+    anchor.rel = "noopener";
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+  }
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
 }

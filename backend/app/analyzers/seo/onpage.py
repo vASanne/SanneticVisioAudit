@@ -1,4 +1,4 @@
-"""On-page checks O01–O03."""
+"""On-page checks O01–O03, O08, and O09."""
 
 from __future__ import annotations
 
@@ -25,6 +25,19 @@ O03 = Spec(
     "H1",
     "Genau eine H1 setzen, die das Seitenthema in wenigen Worten nennt.",
     quick_win=True,
+)
+O08 = Spec(
+    "O08",
+    "high",
+    "Strukturierte Daten",
+    "JSON-LD ergänzen, dessen @type zur Seite passt, zum Beispiel Organization, WebSite oder Article.",
+    quick_win=True,
+)
+O09 = Spec(
+    "O09",
+    "high",
+    "Schema-Gültigkeit",
+    "JSON-LD als gültiges JSON mit @context und @type ausliefern.",
 )
 
 
@@ -76,6 +89,30 @@ def check_h1(page: PageSnapshot) -> CheckResult:
             (page.final_url,),
         )
     return result(O03, "pass", "Die Seiten haben genau eine klare H1.")
+
+
+def check_structured_data(page: PageSnapshot) -> CheckResult:
+    """O08: indexable HTML publishes typed JSON-LD."""
+
+    typed = [block for block in page.json_ld if block.valid_json and block.types]
+    if typed:
+        return result(O08, "pass", "JSON-LD mit einem Seitentyp ist vorhanden.")
+    if page.json_ld:
+        return result(O08, "warning", "JSON-LD ist vorhanden, nennt aber keinen @type.", (page.final_url,))
+    return result(O08, "fail", "Es gibt kein JSON-LD.", (page.final_url,))
+
+
+def check_schema_validity(page: PageSnapshot) -> CheckResult | None:
+    """O09: existing JSON-LD parses and carries context plus a type."""
+
+    if not page.json_ld:
+        return None
+    invalid = next((block for block in page.json_ld if not block.valid_json), None)
+    if invalid is not None:
+        return result(O09, "fail", invalid.error or "Das JSON-LD ist ungültig.", (page.final_url,))
+    if any(not block.has_context or not block.types for block in page.json_ld):
+        return result(O09, "warning", "JSON-LD braucht @context und @type.", (page.final_url,))
+    return result(O09, "pass", "Das JSON-LD ist gültiges JSON mit @context und @type.")
 
 
 def _band(length: int, *, ideal: tuple[int, int], soft: tuple[int, int]) -> CheckStatus:

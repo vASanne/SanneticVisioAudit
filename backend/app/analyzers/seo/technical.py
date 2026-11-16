@@ -1,10 +1,12 @@
-"""Technical SEO checks T01–T05."""
+"""Technical SEO checks T01–T05, T07, T08, T11, and T14."""
 
 from __future__ import annotations
 
+from urllib.parse import urlsplit
+
 from app.analyzers.common import Spec, result
 from app.crawler.robots import RobotsPolicy
-from app.crawler.urls import crawl_key
+from app.crawler.urls import crawl_key, document_key, same_site
 from app.domain import CheckResult, PageSnapshot, SiteContext
 
 T01 = Spec(
@@ -39,6 +41,31 @@ T05 = Spec(
     "robots.txt",
     "Eine erreichbare robots.txt anlegen, die wichtige Pfade erlaubt und die Sitemap nennt.",
     quick_win=True,
+)
+T07 = Spec(
+    "T07",
+    "critical",
+    "HTTPS",
+    "Die ganze Website über HTTPS ausliefern und keine HTTP-Ressourcen in HTTPS-Seiten einbinden.",
+)
+T08 = Spec(
+    "T08",
+    "high",
+    "Viewport",
+    'Ein Viewport-Meta mit width=device-width setzen, zum Beispiel content="width=device-width, initial-scale=1".',
+    quick_win=True,
+)
+T11 = Spec(
+    "T11",
+    "high",
+    "JavaScript-Abhängigkeit",
+    "Den zentralen Inhalt bereits im ersten HTML ausgeben, nicht erst nach dem Ausführen von Skripten.",
+)
+T14 = Spec(
+    "T14",
+    "high",
+    "Defekte interne Links",
+    "Interne Links, die auf Fehlerseiten zeigen, auf ein erreichbares Ziel ändern oder entfernen.",
 )
 
 
@@ -83,7 +110,7 @@ def check_canonical(page: PageSnapshot) -> CheckResult:
         return result(T03, "warning", "Es fehlt ein Canonical-Tag.", (target,))
     if not page.canonical:
         return result(T03, "fail", "Der Canonical-Tag hat kein Ziel.", (target,))
-    if crawl_key(page.canonical) == crawl_key(target):
+    if document_key(page.canonical) == document_key(target):
         return result(T03, "pass", "Der Canonical zeigt auf die Seite selbst.")
     return result(
         T03,
@@ -139,10 +166,102 @@ def check_robots_txt(context: SiteContext) -> CheckResult:
     return result(T05, "pass", "robots.txt erlaubt die Start-URL und nennt eine Sitemap.")
 
 
+def check_https(page: PageSnapshot) -> CheckResult:
+    """T07: the final URL is HTTPS and embeds no HTTP resources."""
+
+    url = page.final_url or page.url
+    if urlsplit(url).scheme != "https":
+        return result(T07, "fail", "Die Seite wird nicht über HTTPS ausgeliefert.", (url,))
+    if page.insecure_resources:
+        sample = ", ".join(page.insecure_resources[:3])
+        return result(
+            T07,
+            "fail",
+            f"Die HTTPS-Seite bindet unsichere HTTP-Ressourcen ein: {sample}.",
+            (url,),
+        )
+    return result(T07, "pass", "Die geprüften Seiten laufen über HTTPS ohne gemischte Inhalte.")
+
+
+def check_viewport(page: PageSnapshot) -> CheckResult:
+    """T08: a viewport meta sets the device width."""
+
+    if not page.viewport:
+        return result(T08, "fail", "Das Viewport-Meta fehlt.", (page.final_url,))
+    if "width=device-width" in page.viewport.replace(" ", "").lower():
+        return result(T08, "pass", "Das Viewport-Meta setzt width=device-width.")
+    return result(
+        T08,
+        "warning",
+        f"Das Viewport-Meta nennt keine Gerätebreite: {page.viewport}.",
+        (page.final_url,),
+    )
+
+
+def check_javascript(page: PageSnapshot) -> CheckResult:
+    """T11: important copy is already in the first HTML response."""
+
+    if page.script_count < 5 or page.word_count >= 80:
+        return result(T11, "pass", "Wichtige Inhalte stehen bereits im ersten HTML.")
+    url = (page.final_url,)
+    text = f"Bei {page.script_count} Skripten stehen nur {page.word_count} Wörter im Roh-HTML."
+    if page.rendered_word_count is not None and page.rendered_word_count >= 80:
+        text = f"{text} Nach dem Rendern sind {page.rendered_word_count} Wörter sichtbar."
+    if page.word_count < 40:
+        return result(T11, "fail", text, url)
+    return result(T11, "warning", text, url)
+
+
+def check_broken_links(context: SiteContext) -> CheckResult | None:
+    """T14: internal links must not end on an error status."""
+
+    if not context.pages:
+        return None
+    fetched = {crawl_key(page.final_url): page for page in context.pages}
+    probed = context.link_status
+    broken: list[str] = []
+    checked = 0
+    for page in context.pages:
+        for link in page.links:
+            if not same_site(page.final_url, link):
+                continue
+            key = crawl_key(link)
+            target = fetched.get(key)
+            if target is not None:
+                status = target.status_code
+            elif key in probed:
+                status = probed[key]
+            else:
+                continue
+            if status is None:
+                continue
+            checked += 1
+            if status != 0 and status < 400:
+                continue
+            if link not in broken:
+                broken.append(link)
+    if checked == 0:
+        return None
+    if not broken:
+        return result(T14, "pass", "Interne Links führen auf keine bekannte Fehlerseite.")
+    count = len(broken)
+    return result(T14, "fail", f"{count} interne Ziele antworten mit einem Fehler.", tuple(broken))
+
+
+def page_has_noindex(page: PageSnapshot) -> bool:
+    """True when meta robots or the X-Robots-Tag asks not to index."""
+
+    return _has_noindex(page.meta_robots, page.header_robots)
+
+
 def _has_noindex(*values: str | None) -> bool:
-    tokens: list[str] = []
     for value in values:
         if not value:
             continue
-        tokens.extend(part.strip().lower() for part in value.replace(";", ",").split(","))
-    return "noindex" in tokens or "none" in tokens
+        for part in value.replace(";", ",").split(","):
+            token = part.strip().lower()
+            if ":" in token:
+                token = token.split(":", 1)[1].strip()
+            if token in {"noindex", "none"}:
+                return True
+    return False

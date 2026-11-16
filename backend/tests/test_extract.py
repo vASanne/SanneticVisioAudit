@@ -35,5 +35,50 @@ def test_visible_words_exclude_scripts_and_links_stay_absolute() -> None:
     assert snapshot.h1 == ("Leistung",)
     assert snapshot.canonical == "https://example.com/leistung"
     assert snapshot.word_count == 42
+    assert snapshot.paragraph_words == (40,)
+    assert snapshot.viewport is None
+    assert snapshot.json_ld == ()
     assert "script0" not in snapshot.text
     assert "https://example.com/kontakt" in snapshot.links
+
+
+def test_bot_specific_noindex_is_read() -> None:
+    html = """<!doctype html><html><head>
+      <title>Hallo</title>
+      <meta name="googlebot" content="noindex">
+    </head><body><h1>Hallo</h1></body></html>"""
+    snapshot = extract_page(
+        CrawledPage(
+            requested_url="https://example.com/",
+            final_url="https://example.com/",
+            status_code=200,
+            redirect_count=0,
+            redirect_loop=False,
+            content_type="text/html; charset=utf-8",
+            header_robots=None,
+            body=html.encode(),
+        )
+    )
+    assert snapshot.meta_robots == "noindex"
+
+
+def test_header_canonical_and_noscript_text_are_kept() -> None:
+    html = """<!doctype html><html><head><title>Hallo</title></head>
+    <body><p>Sichtbarer Text bleibt erhalten und zaehlt mit.</p>
+    <noscript>Ersatztext im Rohdokument</noscript></body></html>"""
+    snapshot = extract_page(
+        CrawledPage(
+            requested_url="https://example.com/seite",
+            final_url="https://example.com/seite",
+            status_code=200,
+            redirect_count=0,
+            redirect_loop=False,
+            content_type="text/html",
+            header_robots=None,
+            body=html.encode(),
+            link_headers=('</kanonisch>; rel="canonical"',),
+        )
+    )
+    assert snapshot.canonical == "https://example.com/kanonisch"
+    assert snapshot.canonical_count == 1
+    assert "Ersatztext" in snapshot.text

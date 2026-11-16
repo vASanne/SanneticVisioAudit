@@ -59,9 +59,71 @@ def normalize_start_url(raw: str) -> str:
     return urlunsplit((parts.scheme.lower(), netloc, path, parts.query, ""))
 
 
-def crawl_key(url: str) -> str:
-    """Identity used to avoid crawling the same path twice."""
+_TRACKING_KEYS = {
+    "dclid",
+    "fbclid",
+    "gclid",
+    "gclsrc",
+    "igshid",
+    "mc_cid",
+    "mc_eid",
+    "msclkid",
+    "twclid",
+    "utm",
+    "yclid",
+    "_ga",
+}
 
+
+def crawl_key(url: str) -> str:
+    """Identity used to avoid crawling the same document twice.
+
+    A trailing slash is ignored. Tracking parameters are ignored. Any other
+    query string stays, so ``/?p=123`` is a different page from ``/``.
+    The result is not a fetch URL.
+    """
+
+    scheme, netloc, path, query = _parts(url)
+    if path != "/" and path.endswith("/"):
+        path = path.rstrip("/")
+    return urlunsplit((scheme, netloc, path, _content_query(query), ""))
+
+
+def _content_query(query: str) -> str:
+    if not query:
+        return ""
+    kept: list[str] = []
+    for part in query.split("&"):
+        if not part:
+            continue
+        key = part.split("=", 1)[0].lower()
+        if key.startswith("utm_") or key in _TRACKING_KEYS:
+            continue
+        kept.append(part)
+    kept.sort()
+    return "&".join(kept)
+
+
+def document_key(url: str) -> str:
+    """Identity for redirects and canonicals. Query and trailing slash stay."""
+
+    scheme, netloc, path, query = _parts(url)
+    return urlunsplit((scheme, netloc, path, query, ""))
+
+
+def repeats_document(urls: list[str]) -> bool:
+    """True when two hops are the same document, not merely the same path."""
+
+    seen: set[str] = set()
+    for url in urls:
+        key = document_key(url)
+        if key in seen:
+            return True
+        seen.add(key)
+    return False
+
+
+def _parts(url: str) -> tuple[str, str, str, str]:
     parts = urlsplit(url)
     host = (parts.hostname or "").lower().rstrip(".")
     port = ""
@@ -73,10 +135,7 @@ def crawl_key(url: str) -> str:
     except ValueError:
         port = ""
     netloc = f"[{host}]{port}" if ":" in host else f"{host}{port}"
-    path = parts.path or "/"
-    if path != "/" and path.endswith("/"):
-        path = path.rstrip("/")
-    return urlunsplit((parts.scheme.lower(), netloc, path, "", ""))
+    return parts.scheme.lower(), netloc, parts.path or "/", parts.query
 
 
 def same_site(left: str, right: str) -> bool:

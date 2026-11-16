@@ -21,11 +21,19 @@ def assert_public_url(url: str, *, resolver: Resolver = socket.getaddrinfo) -> N
     host = (parts.hostname or "").lower().rstrip(".")
     if not host or parts.scheme not in {"http", "https"}:
         raise UnsafeUrlError("Nur öffentliche http- und https-Adressen können geprüft werden.")
-    if host in _BLOCKED_NAMES or host.endswith(".local") or host.endswith(".internal"):
+    public_connect_host(host, resolver=resolver)
+
+
+def public_connect_host(host: str, *, resolver: Resolver = socket.getaddrinfo) -> str:
+    """Return one public address for this host. Every resolved address must be public."""
+
+    name = host.lower().rstrip(".")
+    if not name or name in _BLOCKED_NAMES or name.endswith(".local") or name.endswith(".internal"):
         raise UnsafeUrlError("Nur öffentliche Web-Adressen können geprüft werden.")
-    for address in _addresses(host, resolver):
-        if not address.is_global:
-            raise UnsafeUrlError("Nur öffentliche Web-Adressen können geprüft werden.")
+    addresses = _addresses(name, resolver)
+    if any(not address.is_global for address in addresses):
+        raise UnsafeUrlError("Nur öffentliche Web-Adressen können geprüft werden.")
+    return str(addresses[0])
 
 
 def _addresses(host: str, resolver: Resolver) -> list[ipaddress.IPv4Address | ipaddress.IPv6Address]:

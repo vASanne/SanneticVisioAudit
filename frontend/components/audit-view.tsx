@@ -2,12 +2,13 @@
 
 import { useEffect, useState } from "react";
 
-import { AuditDetail, apiBase, getAudit } from "@/lib/api";
-import { scoreTone, severityLabel, statusLabel } from "@/lib/labels";
+import { AuditDetail, getAudit, openReport } from "@/lib/api";
+import { scoreBand, severityBadge, severityLabel, statusLabel } from "@/lib/labels";
 
 export function AuditView({ id }: { id: string }) {
   const [audit, setAudit] = useState<AuditDetail | null>(null);
   const [error, setError] = useState("");
+  const [reportError, setReportError] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -35,68 +36,120 @@ export function AuditView({ id }: { id: string }) {
   }, [id]);
 
   return (
-    <main className="mx-auto max-w-5xl px-6 py-12">
-      <a href="/" className="text-sm uppercase tracking-[0.14em]">
-        Zur Übersicht
-      </a>
-      {!audit && !error ? <p className="mt-8">Audit wird geladen …</p> : null}
-      {error ? <p className="mt-8 text-[#8e1b2a]">{error}</p> : null}
-      {audit ? <AuditBody audit={audit} /> : null}
-    </main>
+    <>
+      <main className="container section-sm">
+        {!audit && !error ? <p>Audit wird geladen …</p> : null}
+        {error ? (
+          <p className="form-error">
+            <span className="pill pill-critical">Fehler</span> {error}
+          </p>
+        ) : null}
+        {audit ? (
+          <AuditBody
+            audit={audit}
+            reportError={reportError}
+            onOpenReport={async (format) => {
+              setReportError("");
+              try {
+                await openReport(audit.id, format);
+              } catch (reason: unknown) {
+                setReportError(reason instanceof Error ? reason.message : "Bericht konnte nicht geladen werden.");
+              }
+            }}
+          />
+        ) : null}
+      </main>
+    </>
   );
 }
 
-function AuditBody({ audit }: { audit: AuditDetail }) {
+function AuditBody({
+  audit,
+  reportError,
+  onOpenReport,
+}: {
+  audit: AuditDetail;
+  reportError: string;
+  onOpenReport: (format: "html" | "pdf") => Promise<void>;
+}) {
   const running = audit.status === "pending" || audit.status === "running";
   return (
     <>
-      <p className="mt-6 text-xs uppercase tracking-[0.18em]">{audit.client_name}</p>
-      <h1 className="mt-2 font-serif text-4xl font-medium">{statusLabel[audit.status]}</h1>
-      <p className="mt-2 break-all text-ink/70">{audit.url}</p>
-      {running ? <p className="mt-6">Seiten werden gelesen. Diese Ansicht aktualisiert sich von selbst.</p> : null}
-      {audit.status === "failed" ? <p className="mt-6 text-[#8e1b2a]">{audit.error_message}</p> : null}
+      <p className="text-sm">{audit.client_name}</p>
+      <h1>{statusLabel[audit.status]}</h1>
+      <p className="break-url">
+        <a href={audit.url}>{audit.url}</a>
+      </p>
+      {running ? <p>Seiten werden gelesen. Diese Ansicht aktualisiert sich von selbst.</p> : null}
+      {audit.status === "failed" ? (
+        <p className="form-error">
+          <span className="pill pill-critical">Fehler</span> {audit.error_message}
+        </p>
+      ) : null}
 
-      <section className="mt-8 grid gap-3 sm:grid-cols-3">
+      <section className="grid grid-3 mt-8">
         <Score label="Gesamt" value={audit.overall_score} />
         <Score label="SEO" value={audit.seo_score} />
         <Score label="GEO" value={audit.geo_score} />
       </section>
 
       {audit.status === "completed" ? (
-        <a
-          className="mt-6 inline-block bg-ink px-4 py-2 text-paper"
-          href={`${apiBase()}/api/v1/audits/${audit.id}/report`}
-          target="_blank"
-          rel="noreferrer"
-        >
-          HTML-Bericht öffnen
-        </a>
+        <p className="mt-8 flex gap-2" style={{ flexWrap: "wrap" }}>
+          <button type="button" className="btn btn-primary" onClick={() => void onOpenReport("html")}>
+            HTML-Bericht öffnen
+          </button>
+          <button type="button" className="btn btn-secondary" onClick={() => void onOpenReport("pdf")}>
+            PDF herunterladen
+          </button>
+        </p>
+      ) : null}
+      {reportError ? (
+        <p className="form-error">
+          <span className="pill pill-critical">Fehler</span> {reportError}
+        </p>
       ) : null}
 
-      <h2 className="mt-10 font-serif text-2xl">Hinweise</h2>
+      {audit.llm_summary ? (
+        <section className="card mt-8">
+          <h2>Inhaltliche Einschätzung</h2>
+          <p className="mb-0">{audit.llm_summary}</p>
+        </section>
+      ) : null}
+
+      {audit.gsc_notes && audit.gsc_notes.length > 0 ? (
+        <section className="card mt-8">
+          <h2>Search Console</h2>
+          {audit.gsc_notes.map((note) => (
+            <p key={note}>{note}</p>
+          ))}
+        </section>
+      ) : null}
+
+      <h2 className="mt-8">Hinweise</h2>
       {audit.issues.length === 0 ? (
-        <p className="mt-3 bg-moss px-4 py-3">
+        <p className="card">
           {audit.status === "completed" ? "Keine offenen Punkte in den geprüften Checks." : "Noch keine Befunde."}
         </p>
       ) : (
-        <ul className="mt-4 space-y-3">
+        <ul className="issue-list">
           {audit.issues.map((issue) => (
-            <li key={issue.id} className="border border-line border-l-4 border-l-ember bg-card px-4 py-3">
-              <p className="text-xs uppercase tracking-[0.08em]">
-                {severityLabel[issue.severity]}
-                {issue.quick_win ? " · Schnell umsetzbar" : ""}
+            <li key={issue.id} className="card">
+              <p className="flex gap-2">
+                <span className={severityBadge(issue.severity)}>{severityLabel[issue.severity]}</span>
+                {issue.quick_win ? <span className="pill pill-neutral">Schnell umsetzbar</span> : null}
+                {issue.impact_score != null ? <span className="pill pill-neutral">Wirkung {issue.impact_score}</span> : null}
               </p>
-              <h3 className="mt-1 text-lg">{issue.title}</h3>
-              <p className="mt-1">{issue.description}</p>
-              <p className="mt-2">
-                <span className="font-medium">Empfehlung. </span>
+              <h3>{issue.title}</h3>
+              <p>{issue.description}</p>
+              <p>
+                <strong>Empfehlung. </strong>
                 {issue.recommendation}
               </p>
               {issue.affected_urls.length > 0 ? (
-                <ul className="mt-2 list-disc pl-5 text-sm text-ink/80">
+                <ul>
                   {issue.affected_urls.slice(0, 8).map((url) => (
-                    <li key={url} className="break-all">
-                      {url}
+                    <li key={url} className="break-url">
+                      <a href={url}>{url}</a>
                     </li>
                   ))}
                 </ul>
@@ -108,15 +161,25 @@ function AuditBody({ audit }: { audit: AuditDetail }) {
 
       {audit.pages.length > 0 ? (
         <>
-          <h2 className="mt-10 font-serif text-2xl">Seiten</h2>
-          <ul className="mt-3 divide-y divide-line border-y border-line">
-            {audit.pages.map((page) => (
-              <li key={page.id} className="flex items-baseline justify-between gap-4 py-2 text-sm">
-                <span className="break-all">{page.title || page.url}</span>
-                <span>{page.status_code ?? "–"}</span>
-              </li>
-            ))}
-          </ul>
+          <h2 className="mt-8">Seiten</h2>
+          <div className="table-responsive">
+            <table className="table table-hover">
+              <thead>
+                <tr>
+                  <th>Seite</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {audit.pages.map((page) => (
+                  <tr key={page.id}>
+                    <td className="break-url">{page.title || page.url}</td>
+                    <td className="code">{page.status_code ?? "–"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </>
       ) : null}
     </>
@@ -124,10 +187,12 @@ function AuditBody({ audit }: { audit: AuditDetail }) {
 }
 
 function Score({ label, value }: { label: string; value: number | null }) {
+  const band = scoreBand(value);
   return (
-    <div className="border border-line bg-card px-4 py-3">
-      <p className="text-xs uppercase tracking-[0.08em] text-ink/60">{label}</p>
-      <p className={`font-serif text-4xl ${scoreTone(value)}`}>{value ?? "–"}</p>
-    </div>
+    <article className={`card ${band.className}`}>
+      <p className="text-sm">{label}</p>
+      <p className="score-value">{value ?? "–"}</p>
+      <p className="text-sm mb-0">{band.label}</p>
+    </article>
   );
 }

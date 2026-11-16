@@ -14,3 +14,4 @@ redis>=5.2
 minio>=7.2
 jinja2>=3.1
 structlog>=24.4
+playwright>=1.49

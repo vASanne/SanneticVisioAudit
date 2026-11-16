@@ -1,0 +1,162 @@
+/* Product mapping on top of sannetic-styleguide.css + sannetic-components.css.
+   Colors, type, space, radius, and shadow come from those custom properties. */
+
+:root {
+  --background: var(--color-bg);
+  --foreground: var(--color-text);
+  --card: var(--color-surface);
+  --card-foreground: var(--color-text);
+  --popover: var(--color-surface);
+  --popover-foreground: var(--color-text);
+  --primary: var(--color-primary);
+  --primary-foreground: var(--color-on-brand);
+  --secondary: var(--color-bg-secondary);
+  --secondary-foreground: var(--color-text);
+  --muted: var(--color-bg-secondary);
+  --muted-foreground: var(--color-text-secondary);
+  --accent: var(--color-bg-secondary);
+  --accent-foreground: var(--color-text);
+  --sannetic-accent: var(--color-accent);
+  --destructive: var(--color-error);
+  --destructive-foreground: var(--color-on-danger);
+  --border: var(--color-border);
+  --input: var(--color-border-strong);
+  --ring: var(--color-accent-text);
+  --radius: var(--radius-lg);
+}
+
+[data-theme="light"],
+.light {
+  --background: var(--color-bg);
+  --foreground: var(--color-text);
+  --card: var(--color-surface);
+  --card-foreground: var(--color-text);
+  --popover: var(--color-surface);
+  --popover-foreground: var(--color-text);
+  --primary: var(--color-primary);
+  --primary-foreground: var(--color-on-brand);
+  --secondary: var(--color-bg-secondary);
+  --secondary-foreground: var(--color-text);
+  --muted: var(--color-bg-secondary);
+  --muted-foreground: var(--color-text-secondary);
+  --accent: var(--color-bg-secondary);
+  --accent-foreground: var(--color-text);
+  --sannetic-accent: var(--color-accent);
+  --destructive: var(--color-error);
+  --destructive-foreground: var(--color-on-danger);
+  --border: var(--color-border);
+  --input: var(--color-border-strong);
+  --ring: var(--color-accent-text);
+}
+
+input[type="checkbox"] {
+  width: auto;
+  padding: 0;
+  accent-color: var(--color-primary);
+}
+
+.check-label {
+  display: inline;
+  margin-bottom: 0;
+}
+
+a.btn:hover {
+  text-decoration: none;
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+  filter: none;
+  box-shadow: none;
+}
+
+.brand-lockup {
+  width: 180px;
+  height: auto;
+  display: block;
+}
+
+.navbar .brand-lockup {
+  width: 160px;
+}
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-left: auto;
+}
+
+.app-topbar .navbar-toggler {
+  display: none;
+}
+
+@media (max-width: 767.98px) {
+  .app-topbar .navbar-toggler {
+    display: inline-flex;
+  }
+}
+
+.score-value {
+  margin: 0;
+  font-size: var(--font-size-5xl);
+  font-weight: var(--font-weight-bold);
+  line-height: var(--line-height-tight);
+  color: var(--color-text);
+}
+
+.score-card {
+  border-top: 4px solid var(--score-color, var(--color-border-strong));
+}
+
+.score-good { --score-color: var(--color-success); }
+.score-mid { --score-color: var(--color-warning); }
+.score-poor { --score-color: var(--color-error); }
+.score-empty { --score-color: var(--color-border-strong); }
+
+.card.score-card:hover {
+  transform: none;
+  box-shadow: var(--color-shadow);
+}
+
+@media (max-width: 767.98px) {
+  .app-shell.is-nav-open .app-sidebar {
+    display: block;
+    position: fixed;
+    inset: var(--topbar-height) 0 0 0;
+    z-index: var(--z-offcanvas);
+    width: min(100%, var(--sidebar-width));
+    max-width: var(--sidebar-width);
+    box-shadow: var(--color-shadow-lg);
+  }
+}
+
+.issue-list {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.form-error {
+  color: var(--color-text);
+  font-weight: var(--font-weight-medium);
+}
+
+.break-url,
+.font-mono {
+  word-break: break-all;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .btn,
+  .btn-primary:hover,
+  .btn-gradient:hover,
+  .btn-secondary:hover,
+  .card,
+  .card:hover {
+    transition: none;
+    transform: none;
+  }
+}

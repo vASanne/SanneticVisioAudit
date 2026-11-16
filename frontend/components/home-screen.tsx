@@ -3,25 +3,32 @@
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { AuditSummary, createAudit, listAudits } from "@/lib/api";
-import { scoreTone, statusLabel } from "@/lib/labels";
+import { AuditSummary, ClientRow, createAudit, listAudits, listClients } from "@/lib/api";
+import { scoreBand, statusLabel } from "@/lib/labels";
 
 export function HomeScreen() {
   const router = useRouter();
   const [url, setUrl] = useState("");
   const [clientName, setClientName] = useState("Intern");
+  const [clientId, setClientId] = useState("");
   const [maxPages, setMaxPages] = useState(25);
   const [followLinks, setFollowLinks] = useState(true);
+  const [renderJs, setRenderJs] = useState(false);
+  const [probeLinks, setProbeLinks] = useState(true);
+  const [llmSummary, setLlmSummary] = useState(false);
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
   const [audits, setAudits] = useState<AuditSummary[]>([]);
+  const [clients, setClients] = useState<ClientRow[]>([]);
   const [listError, setListError] = useState("");
 
   useEffect(() => {
     let active = true;
-    listAudits()
-      .then((rows) => {
-        if (active) setAudits(rows);
+    Promise.all([listAudits(), listClients().catch(() => [] as ClientRow[])])
+      .then(([rows, clientRows]) => {
+        if (!active) return;
+        setAudits(rows);
+        setClients(clientRows);
       })
       .catch((reason: unknown) => {
         if (active) setListError(reason instanceof Error ? reason.message : "Audits konnten nicht geladen werden.");
@@ -39,8 +46,12 @@ export function HomeScreen() {
       const audit = await createAudit({
         url,
         client_name: clientName,
+        client_id: clientId || null,
         max_pages: maxPages,
         follow_links: followLinks,
+        render_js: renderJs,
+        probe_internal_links: probeLinks,
+        llm_summary: llmSummary,
       });
       router.push(`/audits/${audit.id}`);
     } catch (reason: unknown) {
@@ -50,90 +61,137 @@ export function HomeScreen() {
   }
 
   return (
-    <main className="mx-auto max-w-5xl px-6 py-12">
-      <p className="text-xs uppercase tracking-[0.18em] text-ink/70">Sannetic Vision Audit</p>
-      <h1 className="mt-3 max-w-2xl font-serif text-5xl font-medium leading-tight">
-        SEO und GEO in einem Befund.
-      </h1>
-      <p className="mt-4 max-w-2xl text-lg text-ink/80">
-        Eine URL prüfen, priorisierte Hinweise lesen und einen kundenfähigen HTML-Bericht öffnen.
-      </p>
+    <main>
+      <section className="container section-sm">
+        <h1 className="mb-4">SEO und GEO in einem Befund.</h1>
+        <p>Eine URL prüfen, priorisierte Hinweise lesen und einen kundenfähigen Bericht öffnen.</p>
 
-      <form onSubmit={onSubmit} className="mt-10 border border-ink bg-card p-6">
-        <label className="block text-sm" htmlFor="url">
-          Start-URL
-        </label>
-        <input
-          id="url"
-          required
-          value={url}
-          onChange={(event) => setUrl(event.target.value)}
-          placeholder="https://kunde.example"
-          className="mt-2 w-full border border-line bg-paper px-3 py-3 text-lg outline-none focus:border-ink"
-        />
-        <div className="mt-4 grid gap-4 sm:grid-cols-[1fr_140px]">
-          <div>
-            <label className="block text-sm" htmlFor="client">
-              Kunde
-            </label>
+        <form onSubmit={onSubmit} className="card mt-8">
+          <div className="form-group">
+            <label htmlFor="url">Start-URL</label>
             <input
-              id="client"
-              value={clientName}
-              onChange={(event) => setClientName(event.target.value)}
-              className="mt-2 w-full border border-line bg-paper px-3 py-2 outline-none focus:border-ink"
+              id="url"
+              required
+              value={url}
+              onChange={(event) => setUrl(event.target.value)}
+              placeholder="https://kunde.example"
             />
           </div>
-          <div>
-            <label className="block text-sm" htmlFor="pages">
-              Seiten
-            </label>
-            <input
-              id="pages"
-              type="number"
-              min={1}
-              max={100}
-              value={maxPages}
-              onChange={(event) => setMaxPages(Number(event.target.value))}
-              className="mt-2 w-full border border-line bg-paper px-3 py-2 outline-none focus:border-ink"
-            />
+          <div className="grid grid-2">
+            <div className="form-group">
+              <label htmlFor="client">Kunde</label>
+              <input id="client" value={clientName} onChange={(event) => setClientName(event.target.value)} />
+            </div>
+            <div className="form-group">
+              <label htmlFor="pages">Seiten</label>
+              <input
+                id="pages"
+                type="number"
+                min={1}
+                max={500}
+                value={maxPages}
+                onChange={(event) => setMaxPages(Number(event.target.value))}
+              />
+            </div>
           </div>
-        </div>
-        <label className="mt-4 flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={followLinks} onChange={(event) => setFollowLinks(event.target.checked)} />
-          Interne Links folgen
-        </label>
-        {error ? <p className="mt-4 text-sm text-[#8e1b2a]">{error}</p> : null}
-        <button
-          type="submit"
-          disabled={pending}
-          className="mt-6 bg-ink px-5 py-3 text-paper disabled:opacity-60"
-        >
-          {pending ? "Wird angelegt …" : "Audit starten"}
-        </button>
-      </form>
+          {clients.length > 0 ? (
+            <div className="form-group">
+              <label htmlFor="client-id">Mandant</label>
+              <select
+                id="client-id"
+                value={clientId}
+                onChange={(event) => {
+                  setClientId(event.target.value);
+                  const match = clients.find((item) => item.id === event.target.value);
+                  if (match) setClientName(match.name);
+                }}
+              >
+                <option value="">Neu über Kundenname</option>
+                {clients.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
+          <div className="form-group flex gap-2" style={{ alignItems: "center" }}>
+            <input id="follow" type="checkbox" checked={followLinks} onChange={(event) => setFollowLinks(event.target.checked)} />
+            <label htmlFor="follow" className="check-label">
+              Interne Links folgen
+            </label>
+          </div>
+          <div className="form-group flex gap-2" style={{ alignItems: "flex-start" }}>
+            <input id="render-js" type="checkbox" checked={renderJs} onChange={(event) => setRenderJs(event.target.checked)} />
+            <label htmlFor="render-js" className="check-label">
+              JavaScript rendern
+              <span className="text-muted" style={{ display: "block", fontWeight: 400 }}>
+                Nur für Seiten, deren Roh-HTML kaum Text enthält.
+              </span>
+            </label>
+          </div>
+          <div className="form-group flex gap-2" style={{ alignItems: "center" }}>
+            <input id="probe-links" type="checkbox" checked={probeLinks} onChange={(event) => setProbeLinks(event.target.checked)} />
+            <label htmlFor="probe-links" className="check-label">
+              Unbesuchte interne Links prüfen
+            </label>
+          </div>
+          <div className="form-group flex gap-2" style={{ alignItems: "flex-start" }}>
+            <input id="llm-summary" type="checkbox" checked={llmSummary} onChange={(event) => setLlmSummary(event.target.checked)} />
+            <label htmlFor="llm-summary" className="check-label">
+              Inhaltliche Einschätzung (LLM)
+            </label>
+          </div>
+          {error ? (
+            <p className="form-error">
+              <span className="pill pill-critical">Fehler</span> {error}
+            </p>
+          ) : null}
+          <button type="submit" className="btn btn-gradient" disabled={pending}>
+            {pending ? "Wird angelegt …" : "Audit starten"}
+          </button>
+        </form>
+      </section>
 
-      <section className="mt-12">
-        <h2 className="font-serif text-2xl">Letzte Audits</h2>
-        {listError ? <p className="mt-3 text-sm text-[#8e1b2a]">{listError}</p> : null}
-        {!listError && audits.length === 0 ? <p className="mt-3 text-ink/70">Noch keine Audits.</p> : null}
-        <ul className="mt-4 divide-y divide-line border-y border-line">
-          {audits.map((audit) => (
-            <li key={audit.id}>
-              <a href={`/audits/${audit.id}`} className="flex items-baseline justify-between gap-4 py-3 hover:text-ember">
-                <span>
-                  <span className="block font-medium">{audit.client_name}</span>
-                  <span className="text-sm text-ink/70">{audit.url}</span>
-                </span>
-                <span className="text-right text-sm">
-                  <span className={`block font-serif text-2xl ${scoreTone(audit.overall_score)}`}>
-                    {audit.overall_score ?? "–"}
-                  </span>
-                  {statusLabel[audit.status]}
-                </span>
-              </a>
-            </li>
-          ))}
-        </ul>
+      <section className="container section-sm">
+        <h2>Letzte Audits</h2>
+        {listError ? (
+          <p className="form-error">
+            <span className="pill pill-critical">Fehler</span> {listError}
+          </p>
+        ) : null}
+        {!listError && audits.length === 0 ? <p className="text-muted">Noch keine Audits.</p> : null}
+        {audits.length > 0 ? (
+          <div className="table-responsive">
+            <table className="table table-hover">
+              <thead>
+                <tr>
+                  <th>Kunde</th>
+                  <th>URL</th>
+                  <th>Status</th>
+                  <th>Gesamt</th>
+                </tr>
+              </thead>
+              <tbody>
+                {audits.map((audit) => {
+                  const band = scoreBand(audit.overall_score);
+                  return (
+                    <tr key={audit.id}>
+                      <td>
+                        <a href={`/audits/${audit.id}`}>{audit.client_name}</a>
+                      </td>
+                      <td className="break-url">{audit.url}</td>
+                      <td>{statusLabel[audit.status]}</td>
+                      <td>
+                        {audit.overall_score ?? "–"} <span className="text-sm">{band.label}</span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
       </section>
     </main>
   );

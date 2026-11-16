@@ -14,6 +14,18 @@ STATUS_RANK = {"fail": 0, "warning": 1, "pass": 2}
 
 
 @dataclass(frozen=True)
+class JsonLdFact:
+    """One JSON-LD node after parsing."""
+
+    valid_json: bool
+    types: tuple[str, ...] = ()
+    has_context: bool = False
+    names: tuple[str, ...] = ()
+    dates: tuple[str, ...] = ()
+    error: str | None = None
+
+
+@dataclass(frozen=True)
 class PageSnapshot:
     """Normalized page facts used by deterministic checks."""
 
@@ -37,6 +49,38 @@ class PageSnapshot:
     content_hash: str = ""
     links: tuple[str, ...] = ()
     error: str | None = None
+    viewport: str | None = None
+    insecure_resources: tuple[str, ...] = ()
+    json_ld: tuple[JsonLdFact, ...] = ()
+    paragraph_words: tuple[int, ...] = ()
+    html_bytes: int = 0
+    heading_levels: tuple[int, ...] = ()
+    images_total: int = 0
+    images_missing_alt: int = 0
+    images_empty_alt: int = 0
+    hreflang: tuple[str, ...] = ()
+    hreflang_hrefs: tuple[str, ...] = ()
+    og_title: str | None = None
+    og_description: str | None = None
+    og_image: str | None = None
+    twitter_card: str | None = None
+    has_author: bool = False
+    date_signals: tuple[str, ...] = ()
+    question_count: int = 0
+    hsts: bool = False
+    content_security_policy: bool = False
+    content_type_options: bool = False
+    rendered_word_count: int | None = None
+
+
+@dataclass(frozen=True)
+class PageSpeedFacts:
+    """Lab or field Core Web Vitals for the start URL."""
+
+    source: str
+    lcp_ms: float | None = None
+    inp_ms: float | None = None
+    cls: float | None = None
 
 
 @dataclass(frozen=True)
@@ -49,6 +93,15 @@ class SiteContext:
     robots_status: int | None
     pages: tuple[PageSnapshot, ...] = ()
     blocked_by_robots: bool = False
+    sitemap_status: int | None = None
+    sitemap_count: int | None = None
+    llms_status: int | None = None
+    llms_words: int = 0
+    ai_txt_status: int | None = None
+    pagespeed: PageSpeedFacts | None = None
+    pagespeed_error: str | None = None
+    link_status: dict[str, int] = field(default_factory=dict)
+    important_paths: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

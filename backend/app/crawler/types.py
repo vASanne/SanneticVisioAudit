@@ -17,6 +17,8 @@ class CrawledPage:
     content_type: str
     header_robots: str | None
     body: bytes
+    link_headers: tuple[str, ...] = ()
+    response_headers: tuple[tuple[str, str], ...] = ()
     error: str | None = None
 
 
@@ -28,3 +30,8 @@ class CrawlOutput:
     robots_txt: str | None
     robots_status: int | None
     blocked_by_robots: bool
+    sitemap_status: int | None = None
+    sitemap_count: int | None = None
+    llms_status: int | None = None
+    llms_words: int = 0
+    ai_txt_status: int | None = None

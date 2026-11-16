@@ -26,10 +26,20 @@ class Settings(BaseSettings):
     s3_bucket: str = "audits"
     user_agent: str = "SanneticVisionBot/1.0 (+https://sannetic.com/bot)"
     crawl_delay_seconds: float = 0.5
-    max_pages_cap: int = 100
+    max_pages_cap: int = 500
+    max_link_probes: int = 200
     cors_origins: str = "http://127.0.0.1:3000,http://localhost:3000"
     log_level: str = "INFO"
     log_format: str = "console"
+    pagespeed_api_key: str = ""
+    auth_secret: str = ""
+    agency_email: str = ""
+    agency_password: str = ""
+    agency_name: str = "Agentur"
+    gsc_access_token: str = ""
+    llm_api_key: str = ""
+    llm_api_url: str = "https://api.openai.com/v1/chat/completions"
+    llm_model: str = "gpt-4o-mini"
 
     @property
     def cors_origin_list(self) -> list[str]:

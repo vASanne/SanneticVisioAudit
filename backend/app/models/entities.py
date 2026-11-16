@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text, func
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -19,8 +19,38 @@ def utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+class User(Base):
+    """Agency login that can access one or more clients."""
+
+    __tablename__ = "users"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    email: Mapped[str] = mapped_column(String(320), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(200))
+    password_hash: Mapped[str] = mapped_column(Text)
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), default=utcnow)
+
+    memberships: Mapped[list[Membership]] = relationship(back_populates="user", cascade="all, delete-orphan")
+
+
+class Membership(Base):
+    """Which clients a user may see."""
+
+    __tablename__ = "memberships"
+    __table_args__ = (UniqueConstraint("user_id", "client_id", name="uq_membership_user_client"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    client_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clients.id", ondelete="CASCADE"), index=True)
+    role: Mapped[str] = mapped_column(String(32), default="member", server_default="member")
+
+    user: Mapped[User] = relationship(back_populates="memberships")
+    client: Mapped[Client] = relationship(back_populates="memberships")
+
+
 class Client(Base):
-    """Agency client that owns audits. Login and tenancy come in a later phase."""
+    """Agency client that owns audits."""
 
     __tablename__ = "clients"
 
@@ -32,6 +62,9 @@ class Client(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), default=utcnow)
 
     audits: Mapped[list[Audit]] = relationship(back_populates="client")
+    memberships: Mapped[list[Membership]] = relationship(back_populates="client", cascade="all, delete-orphan")
+    schedules: Mapped[list[AuditSchedule]] = relationship(back_populates="client", cascade="all, delete-orphan")
+    watchlist_items: Mapped[list[WatchlistItem]] = relationship(back_populates="client", cascade="all, delete-orphan")
 
 
 class Audit(Base):
@@ -112,3 +145,47 @@ class Score(Base):
     details: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
 
     audit: Mapped[Audit] = relationship(back_populates="scores")
+
+
+class AuditSchedule(Base):
+    """Recurring crawl for one client URL."""
+
+    __tablename__ = "audit_schedules"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    client_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clients.id", ondelete="CASCADE"), index=True)
+    url: Mapped[str] = mapped_column(Text)
+    cron: Mapped[str] = mapped_column(String(64), default="0 6 * * *", server_default="0 6 * * *")
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    config: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
+    next_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), default=utcnow)
+
+    client: Mapped[Client] = relationship(back_populates="schedules")
+    watchlist_items: Mapped[list[WatchlistItem]] = relationship(back_populates="schedule")
+
+
+class WatchlistItem(Base):
+    """Customer URL under observation, optionally with a renewal schedule."""
+
+    __tablename__ = "watchlist_items"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    client_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clients.id", ondelete="CASCADE"), index=True)
+    url: Mapped[str] = mapped_column(Text)
+    label: Mapped[str] = mapped_column(String(200), default="", server_default="")
+    notes: Mapped[str] = mapped_column(Text, default="", server_default="")
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    schedule_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("audit_schedules.id", ondelete="SET NULL"),
+        default=None,
+        index=True,
+    )
+    last_audit_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("audits.id", ondelete="SET NULL"), default=None)
+    last_overall_score: Mapped[float | None] = mapped_column(Float, default=None)
+    last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), default=utcnow)
+
+    client: Mapped[Client] = relationship(back_populates="watchlist_items")
+    schedule: Mapped[AuditSchedule | None] = relationship(back_populates="watchlist_items")
