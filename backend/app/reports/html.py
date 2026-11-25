@@ -14,16 +14,17 @@ from urllib.parse import urlsplit
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from markupsafe import Markup
 
+from app.core.client_settings import css_declaration_is_safe
+from app.crawler.safety import logo_reference_is_safe
+
 from app.scoring.engine import METHODOLOGY
 
 _ASSETS = Path(__file__).parent / "assets"
-_TOKEN_NAME = re.compile(r"^--[a-z0-9-]+$")
-_TOKEN_VALUE = re.compile(r"^[^;{}]{1,80}$")
-
 _ENV = Environment(
     loader=FileSystemLoader(Path(__file__).parent / "templates"),
     autoescape=select_autoescape(enabled_extensions=("html",)),
 )
+_ENV.filters["http_url"] = lambda value: _http_url(value)
 _LABELS = {
     "critical": "Kritisch",
     "high": "Hoch",
@@ -103,7 +104,7 @@ def _font_data(name: str) -> str:
 
 
 def _client_logo(logo_url: str | None) -> Markup:
-    if logo_url and _safe_logo_url(logo_url):
+    if logo_url and logo_reference_is_safe(logo_url):
         safe = html.escape(logo_url, quote=True)
         return Markup(f'<img src="{safe}" alt="Logo" style="width:220px;height:auto;" />')
     return _logo()
@@ -116,9 +117,12 @@ def _logo() -> Markup:
     return Markup(raw)
 
 
-def _safe_logo_url(value: str) -> bool:
-    parts = urlsplit(value)
-    return parts.scheme in {"http", "https"} and bool(parts.netloc)
+def _http_url(value: object) -> str:
+    text = str(value or "").strip()
+    parts = urlsplit(text)
+    if parts.scheme not in {"http", "https"} or not parts.hostname or parts.username or parts.password:
+        return ""
+    return text
 
 
 def _theme_overrides(tokens: dict[str, str] | None) -> Markup:
@@ -126,9 +130,9 @@ def _theme_overrides(tokens: dict[str, str] | None) -> Markup:
         return Markup("")
     lines: list[str] = []
     for key, value in tokens.items():
-        if not _TOKEN_NAME.match(key) or not _TOKEN_VALUE.match(value.strip()):
+        if not css_declaration_is_safe(str(key), str(value)):
             continue
-        lines.append(f"{key}:{html.escape(value.strip())};")
+        lines.append(f"{html.escape(str(key))}:{html.escape(value.strip())};")
     if not lines:
         return Markup("")
     return Markup(":root{" + "".join(lines) + "}")

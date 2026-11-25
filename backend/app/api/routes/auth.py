@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -10,7 +10,8 @@ from app.api.deps import AuthUser, optional_user
 from app.api.schemas import AuthStatus, LoginRequest, LoginResponse
 from app.core.config import get_settings
 from app.core.database import get_db
-from app.core.security import auth_enabled, hash_password, issue_token, verify_password
+from app.core.rate_limit import allow
+from app.core.security import AuthNotConfigured, auth_enabled, hash_password, issue_token, needs_rehash, verify_password
 from app.models import User
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -37,15 +38,33 @@ def me(user: AuthUser | None = Depends(optional_user)) -> AuthStatus:
 
 
 @router.post("/login", response_model=LoginResponse)
-def login(payload: LoginRequest, db: Session = Depends(get_db)) -> LoginResponse:
+def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)) -> LoginResponse:
     """Issue a bearer token for an agency user."""
 
+    peer = request.client.host if request.client else "unknown"
+    if not allow(f"login:{peer}", limit=10, window_seconds=60):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Zu viele Anmeldeversuche. Bitte kurz warten.",
+            headers={"Retry-After": "60"},
+        )
     ensure_agency_admin(db)
     email = payload.email.strip().lower()
     user = db.scalar(select(User).where(User.email == email))
-    if user is None or not verify_password(payload.password, user.password_hash):
+    password_ok = verify_password(payload.password, user.password_hash if user is not None else "")
+    if user is None or not password_ok:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="E-Mail oder Passwort ist falsch.")
-    token = issue_token(AuthUser(id=user.id, email=user.email, name=user.name, is_admin=user.is_admin))
+    if needs_rehash(user.password_hash):
+        user.password_hash = hash_password(payload.password)
+        db.commit()
+        db.refresh(user)
+    try:
+        token = issue_token(AuthUser(id=user.id, email=user.email, name=user.name, is_admin=user.is_admin))
+    except AuthNotConfigured as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Anmeldung ist nicht konfiguriert.",
+        ) from exc
     return LoginResponse(access_token=token, user_name=user.name, email=user.email, is_admin=user.is_admin)
 
 
@@ -59,11 +78,6 @@ def ensure_agency_admin(db: Session) -> User | None:
         return None
     existing = db.scalar(select(User).where(User.email == email))
     if existing is not None:
-        # Keep the bootstrapped agency account usable even if it was demoted.
-        if not existing.is_admin:
-            existing.is_admin = True
-            db.commit()
-            db.refresh(existing)
         return existing
     user = User(
         email=email,

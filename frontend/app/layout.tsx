@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import type { ReactNode } from "react";
 
 import { Providers } from "./providers";
@@ -21,10 +22,14 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+export default async function RootLayout({ children }: { children: ReactNode }) {
+  // Reading the per-request nonce opts the document into dynamic rendering so
+  // Next can attach that nonce to its scripts. Without it, static HTML cannot
+  // satisfy a nonce CSP.
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
   return (
-    <html lang="de">
-      <body>
+    <html lang="de" nonce={nonce}>
+      <body nonce={nonce}>
         <Providers>{children}</Providers>
       </body>
     </html>

@@ -10,7 +10,11 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import AuthUser, allowed_client_ids, assert_client_access, require_admin, require_login
 from app.api.schemas import ClientCreate, ClientRead, ClientUpdate
+from app.core.client_settings import SettingsRejected, public_client_settings, sanitize_client_settings
 from app.core.database import get_db
+from app.core.security import auth_enabled
+from app.crawler.errors import UnsafeUrlError
+from app.crawler.safety import assert_public_url, logo_reference_is_safe
 from app.models import Audit, Client
 
 router = APIRouter(prefix="/clients", tags=["clients"])
@@ -36,12 +40,15 @@ def create_client(
     db: Session = Depends(get_db),
     _: AuthUser | None = Depends(require_admin),
 ) -> ClientRead:
-    client = Client(
-        name=payload.name.strip(),
-        domain=payload.domain,
-        logo_url=payload.logo_url,
-        settings=dict(payload.settings or {}),
-    )
+    try:
+        client = Client(
+            name=payload.name.strip(),
+            domain=_domain(payload.domain),
+            logo_url=_logo(payload.logo_url),
+            settings=sanitize_client_settings(payload.settings, existing=None, is_admin=True),
+        )
+    except (SettingsRejected, UnsafeUrlError) as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     db.add(client)
     db.commit()
     db.refresh(client)
@@ -68,14 +75,21 @@ def update_client(
 ) -> ClientRead:
     client = _get(db, client_id)
     assert_client_access(db, user, client.id)
-    if payload.name is not None:
-        client.name = payload.name.strip()
-    if payload.domain is not None:
-        client.domain = payload.domain
-    if payload.logo_url is not None:
-        client.logo_url = payload.logo_url
-    if payload.settings is not None:
-        client.settings = dict(payload.settings)
+    try:
+        if payload.name is not None:
+            client.name = payload.name.strip()
+        if payload.domain is not None:
+            client.domain = _domain(payload.domain)
+        if payload.logo_url is not None:
+            client.logo_url = _logo(payload.logo_url)
+        if payload.settings is not None:
+            client.settings = sanitize_client_settings(
+                payload.settings,
+                existing=dict(client.settings or {}),
+                is_admin=_is_admin(user),
+            )
+    except (SettingsRejected, UnsafeUrlError) as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     db.commit()
     db.refresh(client)
     return _read(client)
@@ -108,7 +122,36 @@ def _read(client: Client) -> ClientRead:
         name=client.name,
         domain=client.domain,
         logo_url=client.logo_url,
-        settings=dict(client.settings or {}),
+        settings=public_client_settings(dict(client.settings or {})),
         created_at=client.created_at,
     )
+
+
+def _is_admin(user: AuthUser | None) -> bool:
+    if not auth_enabled():
+        return True
+    return bool(user and user.is_admin)
+
+
+def _domain(value: str | None) -> str | None:
+    if value is None:
+        return None
+    text = value.strip().lower()
+    if not text:
+        return None
+    if "://" in text or "/" in text or " " in text or "@" in text or len(text) > 255:
+        raise SettingsRejected("Die Domain muss ein Hostname sein.")
+    return text
+
+
+def _logo(value: str | None) -> str | None:
+    if value is None:
+        return None
+    text = value.strip()
+    if not text:
+        return None
+    if len(text) > 2000 or not logo_reference_is_safe(text):
+        raise SettingsRejected("Die Logo-URL ist nicht erlaubt.")
+    assert_public_url(text)
+    return text
 

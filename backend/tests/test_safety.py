@@ -39,6 +39,15 @@ def test_public_host_is_allowed() -> None:
     assert_public_url("https://example.com/audit", resolver=_public)
 
 
+def _mixed(host: str, _port: object, *args: object, **kwargs: object) -> list[tuple[object, ...]]:
+    if host != "example.com":
+        raise socket.gaierror(host)
+    return [
+        (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 0)),
+        (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.1.1.1", 0)),
+    ]
+
+
 def test_private_and_local_targets_are_rejected() -> None:
     with pytest.raises(UnsafeUrlError):
         assert_public_url("http://127.0.0.1/", resolver=_unused)
@@ -48,6 +57,26 @@ def test_private_and_local_targets_are_rejected() -> None:
         assert_public_url("http://localhost/admin", resolver=_unused)
     with pytest.raises(UnsafeUrlError):
         assert_public_url("https://example.com/", resolver=_private)
+    with pytest.raises(UnsafeUrlError):
+        assert_public_url("https://example.com/", resolver=_mixed)
+    with pytest.raises(UnsafeUrlError):
+        assert_public_url("http://[::1]/", resolver=_unused)
+    with pytest.raises(UnsafeUrlError):
+        assert_public_url("http://[::ffff:169.254.169.254]/", resolver=_unused)
+    with pytest.raises(UnsafeUrlError):
+        assert_public_url("http://2130706433/", resolver=_unused)
+    with pytest.raises(UnsafeUrlError):
+        assert_public_url("http://0177.0.0.1/", resolver=_unused)
+    with pytest.raises(UnsafeUrlError):
+        assert_public_url("http://127.1/", resolver=_unused)
+    with pytest.raises(UnsafeUrlError):
+        assert_public_url("http://metadata.google.internal/", resolver=_unused)
+    with pytest.raises(UnsafeUrlError):
+        assert_public_url("http://user:pass@example.com/", resolver=_unused)
+    with pytest.raises(UnsafeUrlError):
+        assert_public_url("file:///etc/passwd", resolver=_unused)
+    with pytest.raises(UnsafeUrlError):
+        public_connect_host("224.0.0.1", resolver=_unused)
 
 
 def test_same_site_ignores_www_and_crawl_key_keeps_content_queries() -> None:

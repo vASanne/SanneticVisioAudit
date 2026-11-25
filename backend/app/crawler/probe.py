@@ -6,8 +6,9 @@ import asyncio
 
 import httpx
 
+from app.crawler.errors import UnsafeUrlError
 from app.crawler.robots import RobotsPolicy
-from app.crawler.runner import _PinnedTransport
+from app.crawler.runner import _PinnedTransport, _read_limited
 from app.crawler.safety import assert_public_url
 from app.crawler.urls import crawl_key, same_site
 from app.domain import PageSnapshot
@@ -49,12 +50,17 @@ async def probe_internal_links(
 
     statuses: dict[str, int] = {}
     headers = {"User-Agent": user_agent, "Accept": "*/*"}
+
+    async def guard(request: httpx.Request) -> None:
+        assert_public_url(str(request.url))
+
     async with httpx.AsyncClient(
         transport=_PinnedTransport(),
         headers=headers,
         follow_redirects=True,
         max_redirects=5,
         timeout=httpx.Timeout(15.0),
+        event_hooks={"request": [guard]},
     ) as client:
         for link in candidates:
             try:
@@ -75,7 +81,11 @@ async def _status(client: httpx.AsyncClient, url: str) -> int | None:
     try:
         response = await client.head(url)
         if response.status_code in {405, 501}:
-            response = await client.get(url)
+            async with client.stream("GET", url) as streamed:
+                await _read_limited(streamed, 4096)
+                return int(streamed.status_code)
         return int(response.status_code)
+    except UnsafeUrlError:
+        return None
     except httpx.HTTPError:
         return 0

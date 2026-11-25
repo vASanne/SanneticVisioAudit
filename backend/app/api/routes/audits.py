@@ -2,7 +2,7 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.api.deps import AuthUser, allowed_client_ids, assert_client_access, require_login
 from app.api.mappers import to_detail, to_summary
 from app.api.schemas import AuditCreate, AuditDetail, AuditSummary
+from app.core.rate_limit import allow
 from app.core.database import get_db
 from app.crawler.errors import UnsafeUrlError
 from app.crawler.render import RenderUnavailableError
@@ -31,11 +32,19 @@ _LOAD = (
 @router.post("", response_model=AuditDetail, status_code=status.HTTP_202_ACCEPTED)
 def start_audit(
     payload: AuditCreate,
+    request: Request,
     db: Session = Depends(get_db),
     user: AuthUser | None = Depends(require_login),
 ) -> AuditDetail:
     """Queue a crawl. The response is the audit before any page has been fetched."""
 
+    peer = str(user.id) if user is not None else (request.client.host if request.client else "unknown")
+    if not allow(f"audit:{peer}", limit=30, window_seconds=3600):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Zu viele Audits in kurzer Zeit. Bitte später erneut versuchen.",
+            headers={"Retry-After": "60"},
+        )
     try:
         audit = create_audit(db, payload, user=user)
     except UnsafeUrlError as exc:

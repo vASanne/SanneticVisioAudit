@@ -53,3 +53,30 @@ def test_white_label_logo_and_tokens() -> None:
     assert "--color-primary:#112233" in html
     assert "Kurzer Hinweis." in html
     assert "Search Console Hinweis" in html
+
+
+def test_report_drops_script_urls_and_css_injection() -> None:
+    issue = SimpleNamespace(
+        severity="low",
+        title="Hinweis",
+        description="Text",
+        recommendation="Keine",
+        affected_urls=("javascript:alert(1)",),
+        quick_win=False,
+    )
+    html = render_audit_report(
+        client_name="Kunde",
+        url="javascript:alert(1)",
+        finished_at=None,
+        pages_crawled=0,
+        scores={"overall": None, "seo": None, "geo": None, "technical": None, "onpage": None},
+        overall_details={"checks": []},
+        issues=[issue],
+        pages=[],
+        logo_url="http://127.0.0.1/logo.svg",
+        white_label=True,
+        theme_tokens={"--color-primary": "url(https://evil.example/x)"},
+    )
+    assert 'href="javascript:' not in html
+    assert "evil.example" not in html
+    assert "127.0.0.1" not in html

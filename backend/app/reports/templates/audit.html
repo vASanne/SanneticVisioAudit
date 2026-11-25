@@ -240,7 +240,7 @@
       <div>
         <div class="brand">{{ logo }}</div>
         <h1>{{ client_name }}</h1>
-        <p class="meta"><a href="{{ url }}">{{ url }}</a></p>
+        <p class="meta">{% set href = url | http_url %}{% if href %}<a href="{{ href }}">{{ url }}</a>{% else %}{{ url }}{% endif %}</p>
       </div>
       <p class="meta">{{ generated_label }}<br>{{ pages_crawled }} Seiten</p>
     </header>
@@ -295,7 +295,7 @@
           {% if issue.affected_urls %}
             <ul>
               {% for item in issue.affected_urls[:20] %}
-                <li><a href="{{ item }}">{{ item }}</a></li>
+                <li>{% set href = item | http_url %}{% if href %}<a href="{{ href }}">{{ item }}</a>{% else %}{{ item }}{% endif %}</li>
               {% endfor %}
             </ul>
             {% if issue.affected_urls|length > 20 %}
@@ -318,7 +318,7 @@
               <tr>
                 <td>{{ page.status_code if page.status_code is not none else "–" }}</td>
                 <td>{{ page.title or "—" }}</td>
-                <td><a href="{{ page.url }}">{{ page.url }}</a></td>
+                <td>{% set href = page.url | http_url %}{% if href %}<a href="{{ href }}">{{ page.url }}</a>{% else %}{{ page.url }}{% endif %}</td>
               </tr>
             {% endfor %}
           </tbody>
