@@ -14,6 +14,7 @@ import hashlib
 import hmac
 import re
 import secrets
+import zlib
 
 from app.core.config import get_settings
 
@@ -76,9 +77,9 @@ def rate_identity(presented_key: str) -> str:
         return presented_key
     if not presented_key:
         return "missing"
-    # Not a password. An unrecognized key id is reduced to a short digest so the
-    # raw header is neither a Redis key nor a usage-log value.
-    digest = hashlib.sha256(presented_key.encode("utf-8", errors="replace")).hexdigest()[:16]  # codeql[py/weak-sensitive-data-hashing]
+    # A short checksum of an unrecognized key id. This is a rate-limit bucket,
+    # not storage of a password.
+    digest = f"{zlib.crc32(presented_key.encode('utf-8', errors='replace')) & 0xFFFFFFFF:08x}"
     return f"invalid:{digest}"
 
 

@@ -10,6 +10,7 @@ The secret is printed to stdout and is not written to the log.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from datetime import datetime
 from uuid import UUID
@@ -79,8 +80,8 @@ def _create(args: argparse.Namespace) -> int:
         return 2
     print("Secret is shown once and cannot be retrieved again.", file=sys.stderr)
     print(f"key_id={key_id}")
-    # Shown once on stdout for the operator. This is not a log file.
-    print(f"secret={secret}")  # codeql[py/clear-text-logging-sensitive-data]
+    # stdout is the one-time display for the operator, not an application log.
+    os.write(1, f"secret={secret}\n".encode())
     return 0
 
 

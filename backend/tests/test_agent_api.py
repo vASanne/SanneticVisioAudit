@@ -442,13 +442,13 @@ def test_agent_post_does_not_use_the_csrf_cookie(api: tuple[TestClient, sessionm
     assert rejected.status_code == 403
 
 
-def test_cli_prints_the_secret_once(api: tuple[TestClient, sessionmaker], capsys: pytest.CaptureFixture[str]) -> None:
+def test_cli_prints_the_secret_once(api: tuple[TestClient, sessionmaker], capfd: pytest.CaptureFixture[str]) -> None:
     _client, factory = api
     ids = _seed(factory)
     from app.cli import main
 
     code = main(["create-api-key", "--name", "Nightly", "--client-id", str(ids["north"])])
-    captured = capsys.readouterr()
+    captured = capfd.readouterr()
     assert code == 0
     assert "once" in captured.err
     assert "key_id=vak_" in captured.out
@@ -462,7 +462,7 @@ def test_cli_prints_the_secret_once(api: tuple[TestClient, sessionmaker], capsys
     db.close()
     missing = main(["create-api-key", "--name", "Other", "--client-id", "00000000-0000-0000-0000-000000000000"])
     assert missing == 2
-    assert "secret=" not in capsys.readouterr().out
+    assert "secret=" not in capfd.readouterr().out
 
 
 def test_openapi_includes_the_placeholder_curl_example(monkeypatch: pytest.MonkeyPatch) -> None:
