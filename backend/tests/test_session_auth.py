@@ -31,6 +31,16 @@ def _csrf(client: TestClient) -> str:
     return token
 
 
+def test_request_cookie_is_not_copied_into_set_cookie() -> None:
+    planted = "a" * 43
+    with TestClient(app, base_url="https://testserver") as client:
+        client.cookies.set("visioaudit_csrf", planted)
+        response = client.get("/api/v1/auth/csrf")
+    assert response.status_code == 200
+    assert response.json()["csrf_token"] == planted
+    assert all(planted not in item for item in response.headers.get_list("set-cookie"))
+
+
 def test_state_change_without_csrf_is_rejected() -> None:
     with TestClient(app, base_url="https://testserver") as client:
         response = client.post(

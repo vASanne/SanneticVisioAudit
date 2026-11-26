@@ -49,11 +49,16 @@ def csrf_tokens_match(cookie: str, header: str) -> bool:
 
 
 def ensure_csrf_cookie(request: Request, response: Response) -> str:
-    """Reuse a well-formed CSRF cookie, or set a new one."""
+    """Return the current CSRF token, or create one.
+
+    A value taken from the request is never written back into ``Set-Cookie``.
+    Only ``issue_csrf_token`` chooses a cookie value, so the client cannot
+    pick it. A well-formed cookie already stored by the browser is reused for
+    the JSON body only.
+    """
 
     existing = request.cookies.get(CSRF_COOKIE, "")
     if csrf_cookie_is_trusted(existing):
-        _set_csrf_cookie(response, existing)
         return existing
     return rotate_csrf_cookie(response)
 
