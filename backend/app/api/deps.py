@@ -30,7 +30,7 @@ def optional_user(
     if user is None:
         return None
     row = db.get(User, user.id)
-    if row is None:
+    if row is None or row.is_api_user or not row.email:
         return None
     return AuthUser(id=row.id, email=row.email, name=row.name, is_admin=row.is_admin)
 

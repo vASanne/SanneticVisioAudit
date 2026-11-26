@@ -1,7 +1,13 @@
 """Security headers, a strict default CSP, and checks for cross-site writes.
 
-State-changing requests must pass the existing Origin allow-list and a
+State-changing browser requests must pass the Origin allow-list and a
 double-submit CSRF check. Safe methods are not CSRF-protected.
+
+``/api/v1/agent/`` is the machine API. It does not use the session cookie, so
+the CSRF cookie is not a credential there. Callers send ``X-Api-Key`` and
+``X-Api-Secret`` instead. Those headers make the request non-simple, so a
+cross-site browser form cannot attach them. A disallowed Origin is still
+rejected when a browser sends one.
 """
 
 from __future__ import annotations
@@ -38,6 +44,8 @@ class SecurityMiddleware(BaseHTTPMiddleware):
         origin = request.headers.get("origin")
         if origin and origin.rstrip("/") not in self._allowed:
             return JSONResponse(status_code=403, content={"detail": "Origin nicht erlaubt."})
+        if _is_agent_api(request.url.path):
+            return None
         cookie = request.cookies.get(CSRF_COOKIE, "")
         header = request.headers.get(CSRF_HEADER, "")
         if not csrf_tokens_match(cookie, header):
@@ -87,6 +95,10 @@ def content_security_policy(*, media_type: str, style_hash: str | None = None) -
             "img-src data: https:; font-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
         )
     return _API_CSP
+
+
+def _is_agent_api(path: str) -> bool:
+    return path == "/api/v1/agent" or path.startswith("/api/v1/agent/")
 
 
 def checked_origins(origins: Sequence[str]) -> list[str]:

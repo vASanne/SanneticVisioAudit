@@ -72,8 +72,13 @@ def login(payload: LoginRequest, request: Request, response: Response, db: Sessi
     ensure_agency_admin(db)
     email = payload.email.strip().lower()
     user = db.scalar(select(User).where(User.email == email))
-    password_ok = verify_password(payload.password, user.password_hash if user is not None else "")
-    if user is None or not password_ok:
+    # API users have no password. The dummy check keeps the failure path from
+    # returning faster than a real password check.
+    stored = ""
+    if user is not None and user.password_hash and not user.is_api_user:
+        stored = user.password_hash
+    password_ok = verify_password(payload.password, stored) and user is not None and not user.is_api_user
+    if user is None or not password_ok or not user.email or not user.password_hash:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="E-Mail oder Passwort ist falsch.")
     if needs_rehash(user.password_hash):
         user.password_hash = hash_password(payload.password)

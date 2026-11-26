@@ -17,6 +17,8 @@ _SESSION_COOKIE = re.compile(r"(?i)((?:visioaudit_session|visioaudit_csrf)=)[^;\
 _ASSIGNMENT = re.compile(
     r"(?i)(password|secret|token|api_key|authorization)(['\"]?\s*[:=]\s*['\"]?)([^\s,'\"}]+)"
 )
+_API_SECRET_HEADER = re.compile(r"(?i)(x-api-secret['\"]?\s*[:=]\s*['\"]?)([^\s,'\"}]+)")
+_VAS_SECRET = re.compile(r"\bvas_[A-Za-z0-9_-]{6,}\b")
 
 
 def setup_logging() -> None:
@@ -60,4 +62,6 @@ def _redact_text(value: str) -> str:
     value = _URL_USERINFO.sub(r"\1[redacted]@", value)
     value = _BEARER.sub(r"\1[redacted]", value)
     value = _SESSION_COOKIE.sub(r"\1[redacted]", value)
+    value = _API_SECRET_HEADER.sub(r"\1[redacted]", value)
+    value = _VAS_SECRET.sub("[redacted]", value)
     return _ASSIGNMENT.sub(r"\1\2[redacted]", value)

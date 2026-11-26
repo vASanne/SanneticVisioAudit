@@ -25,13 +25,21 @@ class User(Base):
     __tablename__ = "users"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    email: Mapped[str] = mapped_column(String(320), unique=True, index=True)
+    email: Mapped[str | None] = mapped_column(String(320), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(200))
-    password_hash: Mapped[str] = mapped_column(Text)
+    # Login users have a password hash. API users do not, and cannot open a browser session.
+    password_hash: Mapped[str | None] = mapped_column(Text, default=None)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    is_api_user: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), default=utcnow)
 
     memberships: Mapped[list[Membership]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    api_keys: Mapped[list[ApiKey]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        foreign_keys="ApiKey.user_id",
+    )
 
 
 class Membership(Base):
@@ -63,6 +71,7 @@ class Client(Base):
 
     audits: Mapped[list[Audit]] = relationship(back_populates="client")
     memberships: Mapped[list[Membership]] = relationship(back_populates="client", cascade="all, delete-orphan")
+    api_keys: Mapped[list[ApiKey]] = relationship(back_populates="client", passive_deletes=True)
     schedules: Mapped[list[AuditSchedule]] = relationship(back_populates="client", cascade="all, delete-orphan")
     watchlist_items: Mapped[list[WatchlistItem]] = relationship(back_populates="client", cascade="all, delete-orphan")
 
@@ -189,3 +198,65 @@ class WatchlistItem(Base):
 
     client: Mapped[Client] = relationship(back_populates="watchlist_items")
     schedule: Mapped[AuditSchedule | None] = relationship(back_populates="watchlist_items")
+
+
+class ApiKey(Base):
+    """Machine credential scoped to one client.
+
+    ``key_id`` is the public identifier. ``secret_hash`` is HMAC-SHA256 of the
+    secret with the server pepper. The secret itself is never stored.
+    """
+
+    __tablename__ = "api_keys"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    key_id: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    secret_hash: Mapped[str] = mapped_column(String(64))
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    client_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clients.id", ondelete="CASCADE"), index=True)
+    scopes: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), default=utcnow)
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"),
+        default=None,
+    )
+
+    user: Mapped[User] = relationship(back_populates="api_keys", foreign_keys=[user_id])
+    client: Mapped[Client] = relationship(back_populates="api_keys")
+
+
+class ApiKeyEvent(Base):
+    """Usage record for an agent key. The secret is not a column."""
+
+    __tablename__ = "api_key_events"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    api_key_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("api_keys.id", ondelete="SET NULL"),
+        default=None,
+        index=True,
+    )
+    key_id: Mapped[str] = mapped_column(String(80), default="")
+    action: Mapped[str] = mapped_column(String(32))
+    method: Mapped[str] = mapped_column(String(8), default="")
+    path: Mapped[str] = mapped_column(String(200), default="")
+    status_code: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), default=utcnow)
+
+
+class ApiIdempotency(Base):
+    """One create request remembered per key, so a retry does not start a second audit."""
+
+    __tablename__ = "api_idempotency_keys"
+    __table_args__ = (UniqueConstraint("api_key_id", "idempotency_key", name="uq_api_idempotency_key"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    api_key_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("api_keys.id", ondelete="CASCADE"), index=True)
+    idempotency_key: Mapped[str] = mapped_column(String(200))
+    request_hash: Mapped[str] = mapped_column(String(64))
+    status_code: Mapped[int] = mapped_column(Integer, default=0)
+    response_body: Mapped[dict[str, Any] | None] = mapped_column(JSONB, default=None)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), default=utcnow)

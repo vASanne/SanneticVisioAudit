@@ -21,6 +21,7 @@ jobs:
         run: |
           set -eu
           auth_secret="$(openssl rand -hex 32)"
+          api_key_pepper="$(openssl rand -hex 32)"
           postgres_password="$(openssl rand -hex 24)"
           redis_password="$(openssl rand -hex 24)"
           minio_password="$(openssl rand -hex 24)"
@@ -36,6 +37,7 @@ jobs:
           NEXT_PUBLIC_API_URL=http://127.0.0.1:8000
           CORS_ORIGINS=http://127.0.0.1:3000
           AUTH_SECRET=${auth_secret}
+          API_KEY_PEPPER=${api_key_pepper}
           AGENCY_EMAIL=ci@example.com
           AGENCY_PASSWORD=${agency_password}
           AGENCY_NAME=CI
@@ -44,7 +46,7 @@ jobs:
           TRUSTED_PROXY_IPS=127.0.0.1
           ROOT_PATH=
           EOF
-          unset auth_secret postgres_password redis_password minio_password agency_password
+          unset auth_secret api_key_pepper postgres_password redis_password minio_password agency_password
       - name: Start the stack
         working-directory: VisioAudit-Infra
         run: |

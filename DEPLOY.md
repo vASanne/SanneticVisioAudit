@@ -13,12 +13,13 @@ cd VisioAudit-Infra
 cp .env.example .env
 ```
 
-Fill every empty required value. `openssl rand -hex 32` for secrets. Use that hex for `POSTGRES_PASSWORD` and `REDIS_PASSWORD` (URL-safe, no spaces or `#`). `AUTH_SECRET` must be at least 32 characters. `MINIO_ROOT_PASSWORD` must be at least 8 characters.
+Fill every empty required value. `openssl rand -hex 32` for secrets. Use that hex for `POSTGRES_PASSWORD` and `REDIS_PASSWORD` (URL-safe, no spaces or `#`). `AUTH_SECRET` must be at least 32 characters. `API_KEY_PEPPER` must be at least 32 characters and is the HMAC pepper for agent API secrets (no default; a database copy does not reveal those secrets). `MINIO_ROOT_PASSWORD` must be at least 8 characters.
 
 | Variable | Production value |
 | --- | --- |
 | `NEXT_PUBLIC_API_URL` | `https://visioaudit.va` (no path, no trailing slash; baked in at frontend build) |
 | `CORS_ORIGINS` | `https://visioaudit.va` |
+| `API_KEY_PEPPER` | `openssl rand -hex 32` (required, at least 32 characters) |
 | `COOKIE_SECURE` | `true` |
 | `COOKIE_SAMESITE` | `lax` |
 | `ROOT_PATH` | empty |
@@ -66,6 +67,14 @@ docker compose up -d --build
 ```
 
 The API container runs migrations before it listens. The first start creates the agency admin from `AGENCY_EMAIL` and `AGENCY_PASSWORD` when that user does not exist. Sign in at `https://visioaudit.va`.
+
+Agent access is not a browser login. An admin creates an API user in Nutzerverwaltung, or from the API container:
+
+```bash
+docker compose exec api python -m app.cli create-api-key --name "Nightly" --client-id CLIENT_UUID
+```
+
+The secret is printed once. Do not capture that stdout in a log store. Agents call `https://visioaudit.va/api/v1/agent/...` with `X-Api-Key` and `X-Api-Secret`. Caddy already forwards `/api/*`, so no extra proxy rule is required. The route reference and a curl example with placeholder credentials are in the README and in the OpenAPI tag `agent` when `EXPOSE_DOCS` is on.
 
 Changing `NEXT_PUBLIC_API_URL` needs a frontend image rebuild.
 

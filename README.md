@@ -10,7 +10,7 @@ Copy `VisioAudit-Infra/.env.example` to `VisioAudit-Infra/.env` and fill every e
 openssl rand -hex 32
 ```
 
-`REDIS_PASSWORD` and `POSTGRES_PASSWORD` must be URL-safe. `AUTH_SECRET` must be at least 32 characters. For a local stack, set `NEXT_PUBLIC_API_URL=http://127.0.0.1:8000` in that file (the example value is the production origin). `TRUSTED_PROXY_IPS` can stay empty locally. Then:
+`REDIS_PASSWORD` and `POSTGRES_PASSWORD` must be URL-safe. `AUTH_SECRET` and `API_KEY_PEPPER` must each be at least 32 characters. `API_KEY_PEPPER` hashes agent API secrets and has no default. For a local stack, set `NEXT_PUBLIC_API_URL=http://127.0.0.1:8000` in that file (the example value is the production origin). `TRUSTED_PROXY_IPS` can stay empty locally. Then:
 
 ```bash
 cd VisioAudit-Infra
@@ -47,11 +47,41 @@ npm run lint
 npm run build
 ```
 
+## Agent API
+
+Automated agents submit URLs and read the stored audit back from `/api/v1/agent/`. This is separate from the browser session. The browser API keeps using the HttpOnly cookie and the CSRF token. The agent API ignores that cookie.
+
+Access is a key id plus a secret, sent as headers over TLS:
+
+- `X-Api-Key`: public id (`vak_...`)
+- `X-Api-Secret`: secret (`vas_...`), shown once when the key is created
+
+The secret is stored as HMAC-SHA256 with `API_KEY_PEPPER` (at least 32 characters, no default). A database copy does not reveal the secret. Comparison is constant-time. Request signing (timestamp, nonce, replay window) was not added: Caddy already terminates TLS, and a second signature protocol is easy for an agent to get wrong. The secret must not be logged. Revocation, an optional expiry, `last_used_at`, and the scopes `audits:create` and `audits:read` are stored on the key. A key only reads and creates audits for its own client.
+
+An agency admin creates an API user in **Nutzerverwaltung** (no password, no browser login) or on the server:
+
+```bash
+python -m app.cli create-api-key --name "Nightly" --client-id CLIENT_UUID
+```
+
+The command prints the secret once. Interactive docs (`/docs`, on when `EXPOSE_DOCS` is set) describe the agent tag, including this placeholder call:
+
+```bash
+curl -sS -X POST "https://visioaudit.va/api/v1/agent/audits" \
+  -H "Content-Type: application/json" \
+  -H "X-Api-Key: ${VISIOAUDIT_API_KEY}" \
+  -H "X-Api-Secret: ${VISIOAUDIT_API_SECRET}" \
+  -H "Idempotency-Key: audit-example-1" \
+  -d '{"urls":["https://example.com/"]}'
+```
+
+Poll `GET /api/v1/agent/audits/AUDIT_ID/status`, then `GET /api/v1/agent/audits/AUDIT_ID` for scores and findings. `GET /api/v1/agent/audits` lists that key's tenant. Submitted URLs go through the same public-address check as the dashboard, including DNS answers and, inside the crawler, redirect targets. Repeat a create with the same `Idempotency-Key` and the same body to get the original ids back. The default batch size is 10. Each key is limited to 60 requests per minute and 30 created audits per hour. If Redis does not answer, those routes return 503.
+
 ## Rate limits
 
 Login is limited to 10 attempts per minute per direct client address. Starting an audit is limited to 30 per hour per signed-in user (or per client address when auth is off). The window lives in Redis and is shared by every API process. The update is one Lua script.
 
-If Redis does not answer, those two routes fail closed with HTTP 503. A Redis outage must not turn into unlimited password guesses. The rest of the API does not use this limiter. The limit key is the TCP peer, not `X-Forwarded-For`. Behind a reverse proxy, set the peer from a trusted proxy before treating the limit as per end user.
+If Redis does not answer, login, audit start, and the agent API fail closed with HTTP 503. A Redis outage must not turn into unlimited password guesses or unlimited agent calls. The login limit key is the TCP peer, not `X-Forwarded-For`. Behind a reverse proxy, set the peer from a trusted proxy before treating that limit as per end user. Agent limits are counted per key id.
 
 ## Matrix background
 
