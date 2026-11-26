@@ -53,6 +53,10 @@ Login is limited to 10 attempts per minute per direct client address. Starting a
 
 If Redis does not answer, those two routes fail closed with HTTP 503. A Redis outage must not turn into unlimited password guesses. The rest of the API does not use this limiter. The limit key is the TCP peer, not `X-Forwarded-For`. Behind a reverse proxy, set the peer from a trusted proxy before treating the limit as per end user.
 
+## Matrix background
+
+The dashboard draws the Sannetic matrix rain behind the login page and the workspace. The animation is the design-system module from [SanneticDesign](https://github.com/vASanne/SanneticDesign) `matrix/matrix-rain.js` and `matrix/matrix-rain.css` (taken from SanneticDashboard `public/scripts/matrix-rain.js`, commit `d47716b`). Glyphs are `0` and `1` in the brand gradient (`#8FD11B` → `#1CC4A0` → `#08C2D4`), at 24 frames per second, with the device pixel ratio capped at 2. Canvas opacity is `0.78` in the dark theme and `0.35` in the light theme. `prefers-reduced-motion: reduce` paints one static frame, and the loop pauses while the tab is hidden. Headings, paragraphs, and tables sit on the page color so the rain stays in the gaps and text contrast does not change.
+
 ## Content Security Policy
 
 The production dashboard allows scripts only with a per-request nonce and `strict-dynamic`. Styles load from `'self'` stylesheets. Inline style attributes are not used. The development server still allows inline styles because the Next.js error overlay injects them.

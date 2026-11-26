@@ -2,12 +2,15 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import type { ReactNode } from "react";
 
+import { MatrixRain } from "@/components/matrix-rain";
+
 import { Providers } from "./providers";
 
 import "./globals.css";
 import "../styles/fonts/fonts.css";
 import "../styles/sannetic-styleguide.css";
 import "../styles/sannetic-components.css";
+import "../styles/matrix-rain.css";
 import "../styles/product.css";
 
 export const metadata: Metadata = {
@@ -30,6 +33,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   return (
     <html lang="de" nonce={nonce}>
       <body nonce={nonce}>
+        <MatrixRain />
         <Providers>{children}</Providers>
       </body>
     </html>
