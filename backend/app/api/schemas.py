@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.domain import AuditState, CheckStatus, Severity
 
@@ -161,17 +161,76 @@ class AuthStatus(BaseModel):
     is_admin: bool = False
 
 
+_API_SCOPES = ("audits:create", "audits:read")
+
+
+def _api_scopes(value: list[str]) -> list[str]:
+    if not value:
+        raise ValueError("Mindestens ein Scope ist erforderlich.")
+    cleaned: list[str] = []
+    for item in value:
+        if item not in _API_SCOPES:
+            raise ValueError("Unbekannter Scope.")
+        if item not in cleaned:
+            cleaned.append(item)
+    return cleaned
+
+
+def _future_expiry(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    if value <= datetime.now(timezone.utc):
+        raise ValueError("Ablaufzeit muss in der Zukunft liegen.")
+    return value
+
+
 class UserCreate(BaseModel):
-    email: str = Field(min_length=3, max_length=320)
+    email: str | None = None
     name: str = Field(min_length=1, max_length=200)
-    password: str = Field(min_length=8, max_length=200)
+    password: str | None = None
     is_admin: bool = False
+    is_api_user: bool = False
     client_ids: list[UUID] = Field(default_factory=list)
+    scopes: list[str] = Field(default_factory=list)
+    expires_at: datetime | None = None
 
     @field_validator("email")
     @classmethod
-    def email_shape(cls, value: str) -> str:
+    def email_shape(cls, value: str | None) -> str | None:
+        if value is None or not value.strip():
+            return None
         return _email(value)
+
+    @field_validator("password")
+    @classmethod
+    def password_length(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        if not 8 <= len(value) <= 200:
+            raise ValueError("Passwort muss 8 bis 200 Zeichen haben.")
+        return value
+
+    @field_validator("expires_at")
+    @classmethod
+    def expiry_future(cls, value: datetime | None) -> datetime | None:
+        return _future_expiry(value)
+
+    @model_validator(mode="after")
+    def login_or_api(self) -> UserCreate:
+        if self.is_api_user:
+            if self.is_admin:
+                raise ValueError("API-Nutzer können keine Administratoren sein.")
+            if self.password:
+                raise ValueError("API-Nutzer haben kein Passwort.")
+            if len(self.client_ids) != 1:
+                raise ValueError("Ein API-Nutzer braucht genau einen Mandanten.")
+            self.scopes = _api_scopes(list(self.scopes) or ["audits:create", "audits:read"])
+            return self
+        if not self.email or not self.password:
+            raise ValueError("E-Mail und Passwort sind erforderlich.")
+        return self
 
 
 class UserUpdate(BaseModel):
@@ -189,13 +248,59 @@ class UserUpdate(BaseModel):
         return _email(value)
 
 
+class ApiKeyRead(BaseModel):
+    """Key metadata. The secret and its hash are not part of this model."""
+
+    id: UUID
+    key_id: str
+    client_id: UUID
+    scopes: list[str]
+    expires_at: datetime | None
+    revoked_at: datetime | None
+    last_used_at: datetime | None
+    created_at: datetime
+
+
+class ApiCredential(BaseModel):
+    """Returned once, at creation or rotation. Callers must store ``secret`` themselves."""
+
+    key_id: str
+    secret: str = Field(description="Shown once. Only a peppered HMAC is stored. This value cannot be retrieved again.")
+
+
 class UserRead(BaseModel):
     id: UUID
-    email: str
+    email: str | None
     name: str
     is_admin: bool
+    is_api_user: bool = False
     client_ids: list[UUID]
+    api_keys: list[ApiKeyRead] = Field(default_factory=list)
     created_at: datetime
+
+
+class UserCreated(UserRead):
+    api_credential: ApiCredential | None = None
+
+
+class ApiKeyCreate(BaseModel):
+    user_id: UUID
+    scopes: list[str] = Field(default_factory=lambda: ["audits:create", "audits:read"])
+    expires_at: datetime | None = None
+
+    @field_validator("scopes")
+    @classmethod
+    def scope_names(cls, value: list[str]) -> list[str]:
+        return _api_scopes(value)
+
+    @field_validator("expires_at")
+    @classmethod
+    def expiry_future(cls, value: datetime | None) -> datetime | None:
+        return _future_expiry(value)
+
+
+class ApiKeyCreated(ApiKeyRead):
+    secret: str = Field(description="Shown once. Only a peppered HMAC is stored.")
 
 
 def _validate_cron(value: str) -> str:
@@ -305,6 +410,51 @@ class WatchlistUpdate(BaseModel):
         if value is None:
             return None
         return _crawl_config(value)
+
+
+class AgentAuditBatch(BaseModel):
+    """One or more public URLs to audit. The tenant comes from the API key, not this body."""
+
+    urls: list[str] = Field(min_length=1, max_length=25)
+    max_pages: int = Field(default=25, ge=1, le=500)
+    follow_links: bool = True
+    render_js: bool = False
+    probe_internal_links: bool = True
+    llm_summary: bool = False
+
+    @field_validator("urls")
+    @classmethod
+    def url_lengths(cls, value: list[str]) -> list[str]:
+        cleaned: list[str] = []
+        for item in value:
+            if not isinstance(item, str) or not 4 <= len(item.strip()) <= 2000:
+                raise ValueError("Each URL must be between 4 and 2000 characters.")
+            cleaned.append(item.strip())
+        return cleaned
+
+
+class AgentAuditAccepted(BaseModel):
+    id: UUID
+    url: str
+    status: str
+
+
+class AgentAuditBatchResult(BaseModel):
+    audits: list[AgentAuditAccepted]
+
+
+class AgentAuditStatus(BaseModel):
+    id: UUID
+    url: str
+    status: AuditState
+    created_at: datetime
+    started_at: datetime | None
+    finished_at: datetime | None
+    pages_crawled: int
+    overall_score: float | None
+    seo_score: float | None
+    geo_score: float | None
+    error_message: str | None
 
 
 class WatchlistRead(BaseModel):

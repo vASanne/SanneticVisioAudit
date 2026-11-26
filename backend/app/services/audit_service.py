@@ -24,37 +24,54 @@ class QueueUnavailableError(RuntimeError):
     """Redis or the worker broker could not accept the audit."""
 
 
-def create_audit(db: Session, payload: AuditCreate, user: AuthUser | None = None) -> Audit:
+def create_audit(
+    db: Session,
+    payload: AuditCreate,
+    user: AuthUser | None = None,
+    *,
+    extra_config: dict[str, str] | None = None,
+    enqueue: bool = True,
+) -> Audit:
     """Persist a pending audit and enqueue it. The URL is checked before anything is stored."""
 
     normalized = normalize_start_url(payload.url)
     assert_public_url(normalized)
     client = _resolve_client(db, payload, user, hostname=urlsplit(normalized).hostname)
+    config: dict[str, object] = {
+        "max_pages": payload.max_pages,
+        "follow_links": payload.follow_links,
+        "render_js": payload.render_js,
+        "probe_internal_links": payload.probe_internal_links,
+        "llm_summary": payload.llm_summary,
+    }
+    for key, value in (extra_config or {}).items():
+        if key in {"source", "api_key_id"} and isinstance(value, str) and 1 <= len(value) <= 80:
+            config[key] = value
     audit = Audit(
         client=client,
         url=normalized,
         status="pending",
-        config={
-            "max_pages": payload.max_pages,
-            "follow_links": payload.follow_links,
-            "render_js": payload.render_js,
-            "probe_internal_links": payload.probe_internal_links,
-            "llm_summary": payload.llm_summary,
-        },
+        config=config,
     )
     db.add(audit)
     db.commit()
     db.refresh(audit)
     audit = db.scalar(select(Audit).where(Audit.id == audit.id).options(selectinload(Audit.client)))  # type: ignore[assignment]
+    if enqueue:
+        _enqueue(db, audit)
+    return audit
+
+
+def _enqueue(db: Session, audit: Audit) -> None:
     try:
         run_audit_task.delay(str(audit.id))
     except Exception as exc:
-        logger.exception("enqueue_failed", audit_id=str(audit.id))
+        # The broker exception can contain a URL. Log the type only.
+        logger.warning("enqueue_failed", audit_id=str(audit.id), error_type=type(exc).__name__)
         audit.status = "failed"
         audit.error_message = "Die Warteschlange ist nicht erreichbar."
         db.commit()
         raise QueueUnavailableError from exc
-    return audit
 
 
 def _resolve_client(

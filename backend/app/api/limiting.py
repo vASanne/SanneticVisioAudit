@@ -10,13 +10,20 @@ from fastapi import HTTPException, status
 from app.core.rate_limit import RateLimitUnavailable, allow
 
 
-def enforce_limit(key: str, *, limit: int, window_seconds: float, detail: str) -> None:
+def enforce_limit(
+    key: str,
+    *,
+    limit: int,
+    window_seconds: float,
+    detail: str,
+    unavailable_detail: str = "Begrenzung ist vorübergehend nicht verfügbar.",
+) -> None:
     try:
         permitted = allow(key, limit=limit, window_seconds=window_seconds)
     except RateLimitUnavailable as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Begrenzung ist vorübergehend nicht verfügbar.",
+            detail=unavailable_detail,
         ) from exc
     if not permitted:
         raise HTTPException(

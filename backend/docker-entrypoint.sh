@@ -36,6 +36,12 @@ if [ "${AUTH_DISABLED:-false}" != "true" ]; then
   fi
 fi
 
+require_var API_KEY_PEPPER
+if [ "${#API_KEY_PEPPER}" -lt 32 ]; then
+  echo "API_KEY_PEPPER is missing or shorter than 32 characters" >&2
+  exit 1
+fi
+
 # Build connection URLs from separate variables so compose files never embed credentials.
 if [ -z "${DATABASE_URL:-}" ]; then
   require_var POSTGRES_PASSWORD

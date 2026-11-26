@@ -105,13 +105,35 @@ export interface WatchlistRow {
   created_at: string;
 }
 
+export interface ApiKeyRow {
+  id: string;
+  key_id: string;
+  client_id: string;
+  scopes: string[];
+  expires_at: string | null;
+  revoked_at: string | null;
+  last_used_at: string | null;
+  created_at: string;
+}
+
+export interface ApiCredential {
+  key_id: string;
+  secret: string;
+}
+
 export interface UserRow {
   id: string;
-  email: string;
+  email: string | null;
   name: string;
   is_admin: boolean;
+  is_api_user: boolean;
   client_ids: string[];
+  api_keys: ApiKeyRow[];
   created_at: string;
+}
+
+export interface UserCreated extends UserRow {
+  api_credential: ApiCredential | null;
 }
 
 export interface AuthStatus {
@@ -271,13 +293,28 @@ export async function listUsers(): Promise<UserRow[]> {
 }
 
 export async function createUser(input: {
-  email: string;
+  email?: string;
   name: string;
-  password: string;
+  password?: string;
   is_admin: boolean;
+  is_api_user?: boolean;
   client_ids: string[];
-}): Promise<UserRow> {
-  return request<UserRow>("/api/v1/users", { method: "POST", body: JSON.stringify(input) });
+  scopes?: string[];
+  expires_at?: string;
+}): Promise<UserCreated> {
+  return request<UserCreated>("/api/v1/users", { method: "POST", body: JSON.stringify(input) });
+}
+
+export async function createApiKey(input: { user_id: string; scopes?: string[] }): Promise<ApiCredential> {
+  return request<ApiCredential>("/api/v1/api-keys", { method: "POST", body: JSON.stringify(input) });
+}
+
+export async function revokeApiKey(id: string): Promise<void> {
+  await request<unknown>(`/api/v1/api-keys/${id}/revoke`, { method: "POST" });
+}
+
+export async function rotateApiKey(id: string): Promise<ApiCredential> {
+  return request<ApiCredential>(`/api/v1/api-keys/${id}/rotate`, { method: "POST" });
 }
 
 export async function updateUser(

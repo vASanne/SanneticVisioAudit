@@ -8,6 +8,8 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from app.api.routes.agent import OPENAPI_TAG_DESCRIPTION, router as agent_router
+from app.api.routes.api_keys import router as api_key_router
 from app.api.routes.audits import router as audit_router
 from app.api.routes.auth import ensure_agency_admin, router as auth_router
 from app.api.routes.clients import router as client_router
@@ -34,6 +36,8 @@ async def lifespan(_: FastAPI):
         logger.warning("auth_disabled")
     elif len(settings.auth_secret.strip()) < 32:
         logger.warning("auth_secret_missing")
+    if len(settings.api_key_pepper.strip()) < 32:
+        logger.warning("api_key_pepper_missing")
     if not settings.database_url.strip():
         logger.warning("database_url_missing")
     else:
@@ -50,8 +54,9 @@ def create_app() -> FastAPI:
     docs = "/docs" if settings.expose_docs else None
     app = FastAPI(
         title=settings.app_name,
-        version="0.2.0",
+        version="0.3.0",
         description="SEO- und GEO-Audits mit nachvollziehbaren Checks und Scores.",
+        openapi_tags=[{"name": "agent", "description": OPENAPI_TAG_DESCRIPTION}],
         lifespan=lifespan,
         debug=False,
         docs_url=docs,
@@ -65,7 +70,7 @@ def create_app() -> FastAPI:
         allow_origins=origins,
         allow_credentials=True,
         allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-        allow_headers=["Content-Type", "Accept", "X-CSRF-Token"],
+        allow_headers=["Content-Type", "Accept", "X-CSRF-Token", "X-Api-Key", "X-Api-Secret", "Idempotency-Key"],
         max_age=600,
     )
     app.include_router(health_router)
@@ -75,6 +80,8 @@ def create_app() -> FastAPI:
     app.include_router(watchlist_router, prefix="/api/v1")
     app.include_router(schedule_router, prefix="/api/v1")
     app.include_router(audit_router, prefix="/api/v1")
+    app.include_router(agent_router, prefix="/api/v1")
+    app.include_router(api_key_router, prefix="/api/v1")
 
     @app.exception_handler(RequestValidationError)
     async def validation_error(_: Request, exc: RequestValidationError) -> JSONResponse:

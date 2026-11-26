@@ -2,6 +2,9 @@
 
 from app.models.base import Base
 from app.models.entities import (
+    ApiIdempotency,
+    ApiKey,
+    ApiKeyEvent,
     Audit,
     AuditSchedule,
     Client,
@@ -14,6 +17,9 @@ from app.models.entities import (
 )
 
 __all__ = [
+    "ApiIdempotency",
+    "ApiKey",
+    "ApiKeyEvent",
     "Audit",
     "AuditSchedule",
     "Base",

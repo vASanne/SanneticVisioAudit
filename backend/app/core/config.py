@@ -37,6 +37,11 @@ class Settings(BaseSettings):
     pagespeed_api_key: str = ""
     auth_secret: str = ""
     auth_disabled: bool = False
+    # HMAC pepper for agent API secrets. No default. Empty disables the agent API.
+    api_key_pepper: str = ""
+    agent_requests_per_minute: int = 60
+    agent_creates_per_hour: int = 30
+    agent_batch_limit: int = 10
     # Secure cookies are the default. Local HTTP (compose.dev.yaml) sets this false.
     cookie_secure: bool = True
     cookie_samesite: str = "lax"
@@ -49,6 +54,13 @@ class Settings(BaseSettings):
     llm_api_key: str = ""
     llm_api_url: str = "https://api.openai.com/v1/chat/completions"
     llm_model: str = "gpt-4o-mini"
+
+    @field_validator("agent_requests_per_minute", "agent_creates_per_hour", "agent_batch_limit")
+    @classmethod
+    def positive_limit(cls, value: int) -> int:
+        if not isinstance(value, int) or isinstance(value, bool) or not 1 <= value <= 10_000:
+            raise ValueError("agent limit is out of range")
+        return value
 
     @field_validator("cookie_samesite")
     @classmethod
