@@ -21,6 +21,7 @@ def _paths() -> set[str]:
 def test_routes_stay_under_the_public_api_prefix() -> None:
     paths = _paths()
     assert "/health" in paths
+    assert "/api/v1/health" in paths
     assert "/api/v1/auth/login" in paths
     assert "/api/v1/audits" in paths
     assert all(path in {"/", "/health"} or path.startswith("/api/") for path in paths)

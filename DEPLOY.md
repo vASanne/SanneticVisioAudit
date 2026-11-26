@@ -1,5 +1,7 @@
 # Deploy
 
+This file is the repository root `DEPLOY.md`, not a file under `VisioAudit-Infra/`.
+
 Production is `VisioAudit-Infra/compose.yaml`. `docker compose up` does not load `compose.dev.yaml` or `compose.override.yaml`. Only the API and the frontend publish ports. Postgres, Redis, and MinIO stay on an internal Docker network with no host ports.
 
 The public site is `https://visioaudit.va`. The dashboard is that origin. The API is the same origin under `/api` (`/api/v1/...`).
@@ -24,13 +26,15 @@ Fill every empty required value. `openssl rand -hex 32` for secrets. Use that he
 | `API_BIND_ADDRESS` / `API_PUBLISH_PORT` | `0.0.0.0` / `8000` |
 | `FRONTEND_BIND_ADDRESS` / `FRONTEND_PUBLISH_PORT` | `0.0.0.0` / `3000` |
 
-`TRUSTED_PROXY_IPS` is the TCP address the API and frontend containers see for Caddy. Comma-separated IPs or IPv4 CIDRs, no spaces. `*` and `0.0.0.0/0` are rejected. With Docker's userland proxy this is usually the `app` network gateway, not the Caddy VM:
+`TRUSTED_PROXY_IPS` is the list of TCP peers allowed to send `X-Forwarded-*`. Comma-separated IPs or IPv4 CIDRs, no spaces. `*` and `0.0.0.0/0` are rejected. It must include the Caddy host. With Docker's userland proxy left on, published-port connections arrive from the Compose network gateway, so that gateway has to be in the list as well as the Caddy host:
 
 ```bash
 docker network inspect visioaudit_app --format '{{(index .IPAM.Config 0).Gateway}}'
 ```
 
-If the daemon runs with `"userland-proxy": false`, use the Caddy VM address instead. Uvicorn accepts `X-Forwarded-*` only from these peers, which is also the client address the login rate limit sees. The frontend drops those headers from every other peer.
+If the daemon runs with `"userland-proxy": false`, the container sees the Caddy host directly and the gateway entry is unnecessary. Uvicorn accepts `X-Forwarded-*` only from these peers, which is also the client address the login rate limit sees. The frontend drops those headers from every other peer.
+
+The public liveness URL is `https://visioaudit.va/api/v1/health` (Caddy forwards `/api/*`). Container healthchecks keep using `http://127.0.0.1:8000/health`. Both return `{"status":"ok"}` only.
 
 Leave `ROOT_PATH` empty. Caddy forwards `/api/*` without stripping it, and the API is already mounted at `/api/v1`. Set `ROOT_PATH=/api` only if a proxy removes that prefix before the request reaches the process.
 

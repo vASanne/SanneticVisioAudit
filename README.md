@@ -28,7 +28,7 @@ State-changing requests need a double-submit CSRF token. The dashboard reads it 
 
 `compose.dev.yaml` is not loaded automatically. It bind-mounts the source tree, reloads the API, publishes Postgres, Redis, and MinIO on localhost only, and sets `COOKIE_SECURE=false` for plain HTTP. Redis is mapped to `127.0.0.1:63799` so an existing service on port 6379 does not collide.
 
-`docker compose up` is the production file: no datastore ports, docs and debug off, and it refuses to start until the required secrets are set. See `DEPLOY.md`. There are no built-in passwords.
+`docker compose up` is the production file: no datastore ports, docs and debug off, and it refuses to start until the required secrets are set. Deployment notes are in the repository root file `DEPLOY.md` (not under `VisioAudit-Infra/`). There are no built-in passwords.
 
 ## Tests
 
