@@ -123,33 +123,51 @@ export interface AuthStatus {
 }
 
 export interface LoginResult {
-  access_token: string;
-  token_type: string;
   user_name: string;
   email: string;
   is_admin: boolean;
+  csrf_token: string;
 }
 
-const TOKEN_KEY = "visioaudit-token";
+const UNSAFE = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+const LEGACY_TOKEN_KEY = "visioaudit-token";
+
+let csrfToken: string | null = null;
+let csrfRequest: Promise<string> | null = null;
 
 export function apiBase(): string {
   return process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
 }
 
-export function getToken(): string | null {
-  if (typeof window === "undefined") return null;
-  return window.localStorage.getItem(TOKEN_KEY);
-}
-
-export function setToken(token: string | null): void {
+export function clearLegacyTokenStorage(): void {
   if (typeof window === "undefined") return;
-  if (token) window.localStorage.setItem(TOKEN_KEY, token);
-  else window.localStorage.removeItem(TOKEN_KEY);
+  window.localStorage.removeItem(LEGACY_TOKEN_KEY);
+  window.sessionStorage.removeItem(LEGACY_TOKEN_KEY);
 }
 
-function authHeaders(): HeadersInit {
-  const token = getToken();
-  return token ? { Authorization: `Bearer ${token}` } : {};
+function rememberCsrf(token: string): void {
+  if (token) csrfToken = token;
+}
+
+async function fetchCsrf(): Promise<string> {
+  const response = await fetch(`${apiBase()}/api/v1/auth/csrf`, {
+    credentials: "include",
+    cache: "no-store",
+  });
+  if (!response.ok) throw new Error(await readError(response));
+  const body = (await response.json()) as { csrf_token: string };
+  rememberCsrf(body.csrf_token);
+  return body.csrf_token;
+}
+
+export async function ensureCsrf(): Promise<string> {
+  if (csrfToken) return csrfToken;
+  if (!csrfRequest) {
+    csrfRequest = fetchCsrf().finally(() => {
+      csrfRequest = null;
+    });
+  }
+  return csrfRequest;
 }
 
 async function readError(response: Response): Promise<string> {
@@ -168,13 +186,14 @@ async function readError(response: Response): Promise<string> {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const method = (init?.method ?? "GET").toUpperCase();
+  const headers = new Headers(init?.headers);
+  if (init?.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+  if (UNSAFE.has(method)) headers.set("X-CSRF-Token", await ensureCsrf());
   const response = await fetch(`${apiBase()}${path}`, {
     ...init,
-    headers: {
-      ...(init?.body ? { "Content-Type": "application/json" } : {}),
-      ...authHeaders(),
-      ...(init?.headers || {}),
-    },
+    headers,
+    credentials: "include",
     cache: "no-store",
   });
   if (response.status === 204) return undefined as T;
@@ -187,13 +206,23 @@ export async function getAuthStatus(): Promise<AuthStatus> {
 }
 
 export async function login(email: string, password: string): Promise<LoginResult> {
+  const token = await ensureCsrf();
   const response = await fetch(`${apiBase()}/api/v1/auth/login`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    cache: "no-store",
+    headers: { "Content-Type": "application/json", "X-CSRF-Token": token },
     body: JSON.stringify({ email, password }),
   });
   if (!response.ok) throw new Error(await readError(response));
-  return (await response.json()) as LoginResult;
+  const body = (await response.json()) as LoginResult;
+  rememberCsrf(body.csrf_token);
+  return body;
+}
+
+export async function logout(): Promise<void> {
+  const body = await request<{ csrf_token: string }>("/api/v1/auth/logout", { method: "POST" });
+  rememberCsrf(body.csrf_token);
 }
 
 export async function createAudit(input: AuditInput): Promise<AuditDetail> {
@@ -347,7 +376,7 @@ export function reportPdfUrl(id: string): string {
 
 export async function openReport(id: string, format: "html" | "pdf"): Promise<void> {
   const url = format === "pdf" ? reportPdfUrl(id) : reportHtmlUrl(id);
-  const response = await fetch(url, { headers: authHeaders() });
+  const response = await fetch(url, { credentials: "include", cache: "no-store" });
   if (!response.ok) throw new Error(await readError(response));
   const blob = await response.blob();
   const objectUrl = URL.createObjectURL(blob);

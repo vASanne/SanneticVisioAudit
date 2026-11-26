@@ -93,7 +93,7 @@ export default function ClientDetailPage() {
             <label htmlFor="logo">Logo-URL</label>
             <input id="logo" value={logoUrl} onChange={(event) => setLogoUrl(event.target.value)} />
           </div>
-          <div className="form-group flex gap-2" style={{ alignItems: "center" }}>
+          <div className="form-group flex gap-2 form-check-row">
             <input id="wl" type="checkbox" checked={whiteLabel} onChange={(event) => setWhiteLabel(event.target.checked)} />
             <label htmlFor="wl" className="check-label">
               White-Label im Bericht

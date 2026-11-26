@@ -59,12 +59,13 @@ def create_app() -> FastAPI:
         openapi_url="/openapi.json" if settings.expose_docs else None,
     )
     app.add_middleware(SecurityMiddleware, allowed_origins=origins)
+    # Credentials stay on only for this explicit list. checked_origins rejects "*".
     app.add_middleware(
         CORSMiddleware,
         allow_origins=origins,
-        allow_credentials=False,
+        allow_credentials=True,
         allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-        allow_headers=["Authorization", "Content-Type", "Accept"],
+        allow_headers=["Content-Type", "Accept", "X-CSRF-Token"],
         max_age=600,
     )
     app.include_router(health_router)

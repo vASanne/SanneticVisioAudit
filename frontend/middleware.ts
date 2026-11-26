@@ -1,29 +1,18 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
+import { contentSecurityPolicy } from "@/lib/csp-policy";
+
 export function middleware(request: NextRequest) {
   const bytes = new Uint8Array(16);
   crypto.getRandomValues(bytes);
   const nonce = btoa(String.fromCharCode(...bytes));
   const api = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
-  const isProd = process.env.NODE_ENV === "production";
-  const scriptSrc = isProd ? `'self' 'nonce-${nonce}' 'strict-dynamic'` : `'self' 'unsafe-inline' 'unsafe-eval'`;
-  const connectSrc = isProd
-    ? `'self' ${api}`
-    : `'self' ${api} ws: wss: http://127.0.0.1:8000 http://localhost:8000`;
-  const directives = [
-    "default-src 'self'",
-    `script-src ${scriptSrc}`,
-    "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: https:",
-    "font-src 'self' data:",
-    `connect-src ${connectSrc}`,
-    "object-src 'none'",
-    "base-uri 'self'",
-    "form-action 'self'",
-    "frame-ancestors 'none'",
-  ];
-  const csp = directives.join("; ");
+  const csp = contentSecurityPolicy({
+    isProd: process.env.NODE_ENV === "production",
+    nonce,
+    apiOrigin: api,
+  });
 
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-nonce", nonce);

@@ -60,6 +60,31 @@ input[type="checkbox"] {
   margin-bottom: 0;
 }
 
+.form-check-row {
+  align-items: center;
+}
+
+.form-check-row-start {
+  align-items: flex-start;
+}
+
+.check-hint {
+  display: block;
+  font-weight: 400;
+}
+
+.login-narrow {
+  max-width: 28rem;
+}
+
+.multi-select {
+  min-height: 8rem;
+}
+
+.wrap-row {
+  flex-wrap: wrap;
+}
+
 a.btn:hover {
   text-decoration: none;
 }

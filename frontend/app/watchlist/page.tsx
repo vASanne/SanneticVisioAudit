@@ -92,7 +92,7 @@ export default function WatchlistPage() {
           <label htmlFor="wl-notes">Notiz</label>
           <textarea id="wl-notes" rows={2} value={notes} onChange={(event) => setNotes(event.target.value)} />
         </div>
-        <div className="form-group flex gap-2" style={{ alignItems: "center" }}>
+        <div className="form-group flex gap-2 form-check-row">
           <input id="wl-renew" type="checkbox" checked={renew} onChange={(event) => setRenew(event.target.checked)} />
           <label htmlFor="wl-renew" className="check-label">
             Regelmäßige Berichterneuerung

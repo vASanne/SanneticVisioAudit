@@ -35,7 +35,7 @@ function LoginForm() {
   }
 
   return (
-    <main className="container section-sm" style={{ maxWidth: "28rem" }}>
+    <main className="container section-sm login-narrow">
       <h1>Anmelden</h1>
       <p className="text-muted">Zugang zur Agentur-Oberfläche für Audits, Kunden und Berichte.</p>
       <form onSubmit={onSubmit} className="card mt-8">

@@ -36,5 +36,8 @@ EXPOSE 9000 9001
 VOLUME /data
 LABEL org.opencontainers.image.title="VisioAudit MinIO" \
       org.opencontainers.image.version="RELEASE.2025-09-07T16-13-09Z"
+# The entrypoint chowns the data volume, then su-exec drops to appuser.
+# nosemgrep: dockerfile.security.missing-user-entrypoint.missing-user-entrypoint
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
+# nosemgrep: dockerfile.security.missing-user.missing-user
 CMD ["server", "/data", "--console-address", ":9001"]

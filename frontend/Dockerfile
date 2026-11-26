@@ -17,6 +17,8 @@ COPY docker-entrypoint.dev.sh /usr/local/bin/docker-entrypoint.dev.sh
 RUN chmod 755 /usr/local/bin/docker-entrypoint.dev.sh
 COPY . .
 EXPOSE 3000
+# Dev stage only. The runtime stage below sets USER appuser.
+# nosemgrep: dockerfile.security.missing-user-entrypoint.missing-user-entrypoint
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.dev.sh"]
 
 FROM deps AS build

@@ -31,6 +31,7 @@ def test_report_escapes_markup_and_counts_passed_checks() -> None:
     assert "Schnell umsetzbar" in html
     assert "--color-primary" in html
     assert "Sannetic" in html
+    assert "style=" not in html
 
 
 def test_white_label_logo_and_tokens() -> None:

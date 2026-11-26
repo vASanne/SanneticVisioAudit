@@ -47,6 +47,24 @@ def test_legacy_pbkdf2_verifies_only_with_the_original_parameters() -> None:
     assert not verify_password("geheim-123", hostile)
 
 
+def test_log_redaction_strips_session_cookies() -> None:
+    from app.core.logging import _redact_text
+
+    cleaned = _redact_text("visioaudit_session=abc.def.ghi; visioaudit_csrf=secrettoken")
+    assert "abc.def" not in cleaned
+    assert "secrettoken" not in cleaned
+    assert "visioaudit_session=[redacted]" in cleaned
+
+
+def test_samesite_none_is_rejected() -> None:
+    from pydantic import ValidationError
+
+    from app.core.config import Settings
+
+    with pytest.raises(ValidationError):
+        Settings(cookie_samesite="none")
+
+
 def test_auth_is_required_unless_explicitly_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
     settings = get_settings()
     monkeypatch.setattr(settings, "auth_disabled", False)
