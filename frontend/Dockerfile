@@ -39,6 +39,7 @@ RUN addgroup --system --gid 1001 appgroup && \
 COPY --from=build --link --chown=1001:1001 /src/.next/standalone ./
 COPY --from=build --link --chown=1001:1001 /src/.next/static ./.next/static
 COPY --from=build --link --chown=1001:1001 /src/public ./public
+COPY --link --chown=1001:1001 trust-proxy.cjs ./trust-proxy.cjs
 USER appuser
 EXPOSE 3000
 LABEL org.opencontainers.image.title="Sannetic Vision Audit Web"

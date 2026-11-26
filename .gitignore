@@ -2,6 +2,9 @@
 .env.*
 !.env.example
 
+# Local-only Compose overrides. Production does not load this name.
+compose.override.yaml
+
 .venv/
 venv/
 __pycache__/

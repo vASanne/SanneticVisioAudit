@@ -4,37 +4,31 @@ SEO and GEO analysis for agency audits. The current build crawls a start URL plu
 
 ## Run locally
 
-Copy `VisioAudit-Infra/.env.example` to `VisioAudit-Infra/.env` and replace every placeholder with a unique value. Generate secrets with:
+Copy `VisioAudit-Infra/.env.example` to `VisioAudit-Infra/.env` and fill every empty required value. Generate secrets with:
 
 ```bash
 openssl rand -hex 32
 ```
 
-`REDIS_PASSWORD` and `POSTGRES_PASSWORD` must be URL-safe. `AUTH_SECRET` must be at least 32 characters. Then:
+`REDIS_PASSWORD` and `POSTGRES_PASSWORD` must be URL-safe. `AUTH_SECRET` must be at least 32 characters. For a local stack, set `NEXT_PUBLIC_API_URL=http://127.0.0.1:8000` in that file (the example value is the production origin). `TRUSTED_PROXY_IPS` can stay empty locally. Then:
 
 ```bash
 cd VisioAudit-Infra
-docker compose up --build
+docker compose -f compose.dev.yaml up --build
 ```
 
 - Dashboard: http://127.0.0.1:3000
-- API docs (loaded only with the development override): http://127.0.0.1:8000/docs
+- API docs: http://127.0.0.1:8000/docs
 
 Sign in with `AGENCY_EMAIL` and `AGENCY_PASSWORD` from `.env`. The API sets an HttpOnly session cookie (`visioaudit_session`, `SameSite=Lax`). The browser will only store it when the dashboard and the API are the same site: use http://127.0.0.1:3000 with `NEXT_PUBLIC_API_URL=http://127.0.0.1:8000`, or put both names under one registrable domain. Mixing `localhost` and `127.0.0.1` drops the cookie.
 
-`COOKIE_SECURE` defaults to true. Browsers ignore Secure cookies on plain HTTP, so `compose.override.yaml` sets it to false for local development. Leave it true behind HTTPS. `COOKIE_SAMESITE` is `lax` or `strict`.
+`COOKIE_SECURE` defaults to true. Browsers ignore Secure cookies on plain HTTP, so `compose.dev.yaml` sets it to false for local development. Leave it true behind HTTPS. `COOKIE_SAMESITE` is `lax` or `strict`.
 
 State-changing requests need a double-submit CSRF token. The dashboard reads it from `GET /api/v1/auth/csrf` (and again after login and logout) and sends it as `X-CSRF-Token`. It is kept in memory only. CORS allows credentials only for the origins in `CORS_ORIGINS`, never for `*`. Logout clears the session cookie.
 
-`docker compose up` also loads `compose.override.yaml`: the source tree is mounted, the API reloads on change, and Postgres, Redis, and MinIO are published on localhost only. Redis is mapped to `127.0.0.1:63799` so an existing service on port 6379 does not collide.
+`compose.dev.yaml` is not loaded automatically. It bind-mounts the source tree, reloads the API, publishes Postgres, Redis, and MinIO on localhost only, and sets `COOKIE_SECURE=false` for plain HTTP. Redis is mapped to `127.0.0.1:63799` so an existing service on port 6379 does not collide.
 
-Without those development settings:
-
-```bash
-docker compose -f compose.yaml up --build
-```
-
-That file does not publish the datastores, does not enable API docs, and refuses to start until the secrets above are set. There are no built-in passwords.
+`docker compose up` is the production file: no datastore ports, docs and debug off, and it refuses to start until the required secrets are set. See `DEPLOY.md`. There are no built-in passwords.
 
 ## Tests
 

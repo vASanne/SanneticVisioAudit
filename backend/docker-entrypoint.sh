@@ -10,6 +10,24 @@ require_var() {
   fi
 }
 
+# Unset is fine for local runs that do not enable proxy headers.
+# A wildcard would trust X-Forwarded-* from every peer.
+if [ -n "${TRUSTED_PROXY_IPS:-}" ]; then
+  old_ifs=$IFS
+  IFS=','
+  set -f
+  for item in $TRUSTED_PROXY_IPS; do
+    case "$item" in
+      \*|0.0.0.0/0|::/0|*[[:space:]]*|"")
+        echo "TRUSTED_PROXY_IPS must list specific proxy addresses" >&2
+        exit 1
+        ;;
+    esac
+  done
+  set +f
+  IFS=$old_ifs
+fi
+
 if [ "${AUTH_DISABLED:-false}" != "true" ]; then
   require_var AUTH_SECRET
   if [ "${#AUTH_SECRET}" -lt 32 ]; then

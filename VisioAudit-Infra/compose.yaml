@@ -1,25 +1,47 @@
-# No default passwords. Copy VisioAudit-Infra/.env.example to .env first.
-# `docker compose up` also loads compose.override.yaml (bind mounts, loopback datastore ports).
-# Skip the override with: docker compose -f compose.yaml up --build
+# Production stack for the visioaudit VM. Caddy on another host terminates TLS.
+# This file is what `docker compose up` loads. It does not publish Postgres, Redis, or MinIO.
+# Local development: docker compose -f compose.dev.yaml up --build
 
 name: visioaudit
 
-# Secrets are loaded from VisioAudit-Infra/.env via env_file.
-# Connection URLs are assembled in the backend entrypoint. Do not inline them here.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+x-no-new-privs: &no-new-privs
+  - no-new-privileges:true
+
+# Connection URLs are built in the backend entrypoint. Do not inline them here.
 x-backend-env: &backend-env
   POSTGRES_HOST: db
+  POSTGRES_USER: ${POSTGRES_USER:?required}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?required}
+  POSTGRES_DB: ${POSTGRES_DB:?required}
   REDIS_HOST: redis
+  REDIS_PASSWORD: ${REDIS_PASSWORD:?required}
+  MINIO_ROOT_USER: ${MINIO_ROOT_USER:?required}
+  MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?required}
   S3_ENDPOINT: http://minio:9000
   S3_BUCKET: audits
   USER_AGENT: SanneticVisionBot/1.0 (+https://sannetic.com/bot)
   CRAWL_DELAY_SECONDS: "0.5"
-  CORS_ORIGINS: http://127.0.0.1:3000,http://localhost:3000
+  CORS_ORIGINS: ${CORS_ORIGINS:-https://visioaudit.va}
   COOKIE_SECURE: ${COOKIE_SECURE:-true}
   COOKIE_SAMESITE: ${COOKIE_SAMESITE:-lax}
+  ROOT_PATH: ${ROOT_PATH:-}
+  TRUSTED_PROXY_IPS: ${TRUSTED_PROXY_IPS:?required}
   LOG_LEVEL: info
-  LOG_FORMAT: console
+  LOG_FORMAT: json
+  EXPOSE_DOCS: "false"
+  DEBUG: "false"
   PYTHONDONTWRITEBYTECODE: "1"
   PYTHONUNBUFFERED: "1"
+  AUTH_SECRET: ${AUTH_SECRET:?required}
+  AGENCY_EMAIL: ${AGENCY_EMAIL:?required}
+  AGENCY_PASSWORD: ${AGENCY_PASSWORD:?required}
+  AGENCY_NAME: ${AGENCY_NAME:-Agentur}
   LLM_API_URL: ${LLM_API_URL:-https://api.openai.com/v1/chat/completions}
   LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
   MAX_PAGES_CAP: ${MAX_PAGES_CAP:-500}
@@ -29,9 +51,16 @@ services:
   db:
     image: postgres:17.12-bookworm
     env_file:
-      - .env
+      - path: .env
+        required: true
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?required}
+      POSTGRES_DB: ${POSTGRES_DB:?required}
     volumes:
       - postgres-data:/var/lib/postgresql/data
+    networks:
+      - data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
       interval: 5s
@@ -39,24 +68,44 @@ services:
       retries: 10
       start_period: 10s
     restart: unless-stopped
+    security_opt: *no-new-privs
+    logging: *logging
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1G
 
   redis:
     image: redis:7.4.12-alpine
     env_file:
-      - .env
+      - path: .env
+        required: true
     environment:
-      REDISCLI_AUTH: ${REDIS_PASSWORD:-}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?required}
+      # redis-cli reads this. The password is not part of the healthcheck argv.
+      REDISCLI_AUTH: ${REDIS_PASSWORD:?required}
+    # Start as root so the entrypoint can chown the password file, then drop to redis.
     entrypoint: ["/usr/local/bin/visio-redis.sh"]
     volumes:
       - redis-data:/data
       - ./redis/entrypoint.sh:/usr/local/bin/visio-redis.sh:ro
+    networks:
+      - data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
       retries: 10
-      start_period: 5s
+      start_period: 10s
     restart: unless-stopped
+    security_opt: *no-new-privs
+    logging: *logging
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 256M
 
   minio:
     build:
@@ -64,29 +113,51 @@ services:
       dockerfile: Dockerfile
     image: visioaudit-minio:local
     env_file:
-      - .env
+      - path: .env
+        required: true
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?required}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?required}
     volumes:
       - minio-data:/data
+    networks:
+      - data
     healthcheck:
       test: ["CMD", "curl", "-f", "http://127.0.0.1:9000/minio/health/live"]
-      interval: 5s
+      interval: 10s
       timeout: 3s
       retries: 12
-      start_period: 10s
+      start_period: 15s
     restart: unless-stopped
+    security_opt: *no-new-privs
+    logging: *logging
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 512M
 
   api:
     build:
       context: ../backend
       dockerfile: Dockerfile
     image: visioaudit-backend:local
+    user: "1001:1001"
     env_file:
-      - .env
+      - path: .env
+        required: true
     environment:
       <<: *backend-env
       RUN_MIGRATIONS: "true"
+    command:
+      - sh
+      - -c
+      - exec python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips "$$TRUSTED_PROXY_IPS" $${ROOT_PATH:+--root-path "$$ROOT_PATH"}
     ports:
-      - "127.0.0.1:8000:8000"
+      - "${API_BIND_ADDRESS:-0.0.0.0}:${API_PUBLISH_PORT:-8000}:8000"
+    networks:
+      - app
+      - data
     depends_on:
       db:
         condition: service_healthy
@@ -97,48 +168,113 @@ services:
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
       interval: 10s
-      timeout: 3s
+      timeout: 5s
       retries: 8
-      start_period: 25s
+      start_period: 40s
     restart: unless-stopped
+    security_opt: *no-new-privs
+    cap_drop:
+      - ALL
+    logging: *logging
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 768M
 
   worker:
     image: visioaudit-backend:local
     build:
       context: ../backend
       dockerfile: Dockerfile
+    user: "1001:1001"
     env_file:
-      - .env
+      - path: .env
+        required: true
     environment:
       <<: *backend-env
     command: ["python", "-m", "celery", "-A", "app.tasks.celery_app:celery_app", "worker", "--loglevel=info", "--concurrency=2"]
+    init: true
+    shm_size: "1gb"
+    networks:
+      - app
+      - data
     depends_on:
       api:
         condition: service_healthy
-      redis:
-        condition: service_healthy
       db:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import os,subprocess,sys; from urllib.parse import quote; p=quote(os.environ['REDIS_PASSWORD'], safe=''); h=os.environ.get('REDIS_HOST','redis'); u='redis://:'+p+'@'+h+':6379/0'; os.environ['REDIS_URL']=u; os.environ['CELERY_BROKER_URL']=u; r=subprocess.run([sys.executable,'-m','celery','-A','app.tasks.celery_app:celery_app','inspect','ping','--timeout','10'], capture_output=True, text=True); sys.exit(0 if 'pong' in (r.stdout+r.stderr).lower() else 1)"
+      interval: 30s
+      timeout: 20s
+      retries: 5
+      start_period: 40s
     restart: unless-stopped
+    security_opt: *no-new-privs
+    logging: *logging
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2G
 
   beat:
     image: visioaudit-backend:local
     build:
       context: ../backend
       dockerfile: Dockerfile
+    user: "1001:1001"
     env_file:
-      - .env
+      - path: .env
+        required: true
     environment:
       <<: *backend-env
-    command: ["python", "-m", "celery", "-A", "app.tasks.celery_app:celery_app", "beat", "--loglevel=info"]
+    command:
+      - python
+      - -m
+      - celery
+      - -A
+      - app.tasks.celery_app:celery_app
+      - beat
+      - --loglevel=info
+      - --pidfile=/tmp/celerybeat.pid
+    networks:
+      - app
+      - data
     depends_on:
       api:
         condition: service_healthy
-      redis:
-        condition: service_healthy
       db:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os, pathlib; os.kill(int(pathlib.Path('/tmp/celerybeat.pid').read_text().strip()), 0)"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     restart: unless-stopped
+    security_opt: *no-new-privs
+    cap_drop:
+      - ALL
+    logging: *logging
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 256M
 
   frontend:
     build:
@@ -146,14 +282,20 @@ services:
       dockerfile: Dockerfile
       target: runtime
       args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://127.0.0.1:8000}
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://visioaudit.va}
     image: visioaudit-frontend:local
+    user: "1001:1001"
     environment:
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://127.0.0.1:8000}
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://visioaudit.va}
       HOSTNAME: "0.0.0.0"
       PORT: "3000"
+      NODE_ENV: production
+      TRUSTED_PROXY_IPS: ${TRUSTED_PROXY_IPS:?required}
+      NODE_OPTIONS: "--require /app/trust-proxy.cjs"
     ports:
-      - "127.0.0.1:3000:3000"
+      - "${FRONTEND_BIND_ADDRESS:-0.0.0.0}:${FRONTEND_PUBLISH_PORT:-3000}:3000"
+    networks:
+      - app
     depends_on:
       api:
         condition: service_healthy
@@ -164,6 +306,24 @@ services:
       retries: 10
       start_period: 20s
     restart: unless-stopped
+    security_opt: *no-new-privs
+    cap_drop:
+      - ALL
+    logging: *logging
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 512M
+
+networks:
+  # Egress for the crawler. Listed first on api, worker, and beat so it is the default route.
+  app:
+    driver: bridge
+  # Postgres, Redis, and MinIO have no route to the internet and no published ports.
+  data:
+    driver: bridge
+    internal: true
 
 volumes:
   postgres-data:

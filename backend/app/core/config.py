@@ -30,12 +30,14 @@ class Settings(BaseSettings):
     max_pages_cap: int = 500
     max_link_probes: int = 200
     cors_origins: str = "http://127.0.0.1:3000,http://localhost:3000"
+    # Empty when the proxy keeps the /api prefix. Set only if the proxy strips it.
+    root_path: str = ""
     log_level: str = "INFO"
     log_format: str = "console"
     pagespeed_api_key: str = ""
     auth_secret: str = ""
     auth_disabled: bool = False
-    # Secure cookies are the default. Local HTTP (compose.override) sets this false.
+    # Secure cookies are the default. Local HTTP (compose.dev.yaml) sets this false.
     cookie_secure: bool = True
     cookie_samesite: str = "lax"
     expose_docs: bool = False
