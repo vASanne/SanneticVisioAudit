@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+from urllib.parse import urlsplit
+
 import httpx
 
 from app.core.config import get_settings
+from app.crawler.errors import UnsafeUrlError
+from app.crawler.safety import assert_public_url
 from app.domain import PageSnapshot
 
 
@@ -13,7 +17,7 @@ def summarize_audit(pages: tuple[PageSnapshot, ...]) -> str | None:
 
     settings = get_settings()
     key = settings.llm_api_key.strip()
-    if not key:
+    if not key or not _llm_endpoint_is_safe(settings.llm_api_url):
         return None
     samples = []
     for page in pages[:5]:
@@ -55,3 +59,14 @@ def summarize_audit(pages: tuple[PageSnapshot, ...]) -> str | None:
     except (httpx.HTTPError, ValueError, TypeError, IndexError, KeyError):
         return None
     return None
+
+
+def _llm_endpoint_is_safe(url: str) -> bool:
+    parts = urlsplit(url.strip())
+    if parts.scheme != "https" or parts.username or parts.password:
+        return False
+    try:
+        assert_public_url(url)
+    except UnsafeUrlError:
+        return False
+    return True

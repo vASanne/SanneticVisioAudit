@@ -36,8 +36,8 @@ def normalize_start_url(raw: str) -> str:
     value = raw.strip()
     if not value:
         raise UnsafeUrlError("Bitte eine URL angeben.")
-    if re.search(r"\s", value):
-        raise UnsafeUrlError("Die URL enthält Leerzeichen.")
+    if re.search(r"\s", value) or "\\" in value or "\x00" in value or "%00" in value.lower():
+        raise UnsafeUrlError("Die URL enthält ungültige Zeichen.")
     if "://" not in value:
         value = f"https://{value}"
     parts = urlsplit(value)

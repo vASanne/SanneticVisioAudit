@@ -4,10 +4,10 @@ FROM python:3.13.18-slim-bookworm AS build
 WORKDIR /src
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
-RUN --mount=type=bind,source=requirements.txt,target=requirements.txt \
+RUN --mount=type=bind,source=requirements.lock,target=requirements.lock \
     --mount=type=secret,id=pip-conf,target=/etc/pip.conf,required=false \
     --mount=type=cache,target=/root/.cache/pip \
-    pip install --no-compile -r requirements.txt
+    pip install --no-compile -r requirements.lock
 COPY . .
 
 FROM python:3.13.18-slim-bookworm AS runtime

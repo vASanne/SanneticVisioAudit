@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from typing import Any
 from uuid import UUID
@@ -9,6 +10,9 @@ from uuid import UUID
 from pydantic import BaseModel, Field, field_validator
 
 from app.domain import AuditState, CheckStatus, Severity
+
+_EMAIL = re.compile(r"^[^@\s]{1,64}@[^@\s]{1,255}\.[A-Za-z0-9-]{2,63}$")
+_CRAWL_BOOLS = ("follow_links", "render_js", "probe_internal_links", "llm_summary")
 
 
 class AuditCreate(BaseModel):
@@ -98,9 +102,42 @@ class ClientRead(BaseModel):
     created_at: datetime
 
 
+def _email(value: str) -> str:
+    text = value.strip().lower()
+    if not _EMAIL.match(text):
+        raise ValueError("E-Mail ist ungültig")
+    return text
+
+
+def _crawl_config(value: object) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise ValueError("config must be an object")
+    unknown = set(value) - {"max_pages", *_CRAWL_BOOLS}
+    if unknown:
+        raise ValueError("config contains unsupported fields")
+    cleaned: dict[str, Any] = {}
+    if "max_pages" in value:
+        pages = value["max_pages"]
+        if isinstance(pages, bool) or not isinstance(pages, int) or not 1 <= pages <= 500:
+            raise ValueError("max_pages must be an integer from 1 to 500")
+        cleaned["max_pages"] = pages
+    for key in _CRAWL_BOOLS:
+        if key not in value:
+            continue
+        if not isinstance(value[key], bool):
+            raise ValueError(f"{key} must be a boolean")
+        cleaned[key] = value[key]
+    return cleaned
+
+
 class LoginRequest(BaseModel):
     email: str = Field(min_length=3, max_length=320)
     password: str = Field(min_length=8, max_length=200)
+
+    @field_validator("email")
+    @classmethod
+    def email_shape(cls, value: str) -> str:
+        return _email(value)
 
 
 class LoginResponse(BaseModel):
@@ -126,6 +163,11 @@ class UserCreate(BaseModel):
     is_admin: bool = False
     client_ids: list[UUID] = Field(default_factory=list)
 
+    @field_validator("email")
+    @classmethod
+    def email_shape(cls, value: str) -> str:
+        return _email(value)
+
 
 class UserUpdate(BaseModel):
     email: str | None = Field(default=None, min_length=3, max_length=320)
@@ -133,6 +175,13 @@ class UserUpdate(BaseModel):
     password: str | None = Field(default=None, min_length=8, max_length=200)
     is_admin: bool | None = None
     client_ids: list[UUID] | None = None
+
+    @field_validator("email")
+    @classmethod
+    def email_shape(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return _email(value)
 
 
 class UserRead(BaseModel):
@@ -168,6 +217,11 @@ class ScheduleCreate(BaseModel):
     def cron_parts(cls, value: str) -> str:
         return _validate_cron(value)
 
+    @field_validator("config")
+    @classmethod
+    def crawl_config(cls, value: dict[str, Any]) -> dict[str, Any]:
+        return _crawl_config(value)
+
 
 class ScheduleUpdate(BaseModel):
     url: str | None = Field(default=None, min_length=4, max_length=2000)
@@ -181,6 +235,13 @@ class ScheduleUpdate(BaseModel):
         if value is None:
             return value
         return _validate_cron(value)
+
+    @field_validator("config")
+    @classmethod
+    def crawl_config(cls, value: dict[str, Any] | None) -> dict[str, Any] | None:
+        if value is None:
+            return None
+        return _crawl_config(value)
 
 
 class ScheduleRead(BaseModel):
@@ -200,7 +261,7 @@ class WatchlistCreate(BaseModel):
     client_id: UUID
     url: str = Field(min_length=4, max_length=2000)
     label: str = Field(default="", max_length=200)
-    notes: str = ""
+    notes: str = Field(default="", max_length=4000)
     enabled: bool = True
     renew_enabled: bool = False
     cron: str = Field(default="0 6 * * *", max_length=64)
@@ -211,10 +272,15 @@ class WatchlistCreate(BaseModel):
     def cron_parts(cls, value: str) -> str:
         return _validate_cron(value)
 
+    @field_validator("config")
+    @classmethod
+    def crawl_config(cls, value: dict[str, Any]) -> dict[str, Any]:
+        return _crawl_config(value)
+
 
 class WatchlistUpdate(BaseModel):
     label: str | None = Field(default=None, max_length=200)
-    notes: str | None = None
+    notes: str | None = Field(default=None, max_length=4000)
     enabled: bool | None = None
     renew_enabled: bool | None = None
     cron: str | None = Field(default=None, max_length=64)
@@ -227,6 +293,13 @@ class WatchlistUpdate(BaseModel):
         if value is None:
             return value
         return _validate_cron(value)
+
+    @field_validator("config")
+    @classmethod
+    def crawl_config(cls, value: dict[str, Any] | None) -> dict[str, Any] | None:
+        if value is None:
+            return None
+        return _crawl_config(value)
 
 
 class WatchlistRead(BaseModel):

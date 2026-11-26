@@ -1,7 +1,7 @@
 """Environment configuration.
 
-Development defaults match the Compose stack in ``VisioAudit-Infra``. Override them
-with environment variables before any shared or production deployment.
+Secrets have no defaults. Set them in the process environment (Compose reads
+``VisioAudit-Infra/.env``) before any shared or production deployment.
 """
 
 from __future__ import annotations
@@ -17,12 +17,12 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     app_name: str = "Sannetic Vision Audit"
-    database_url: str = "postgresql+psycopg://visio:REDACTED@127.0.0.1:5432/visioaudit"
+    database_url: str = ""
     redis_url: str = "redis://127.0.0.1:6379/0"
     celery_broker_url: str = "redis://127.0.0.1:6379/0"
     s3_endpoint: str = "http://127.0.0.1:9000"
-    s3_access_key: str = "visioaudit"
-    s3_secret_key: str = "REDACTED"
+    s3_access_key: str = ""
+    s3_secret_key: str = ""
     s3_bucket: str = "audits"
     user_agent: str = "SanneticVisionBot/1.0 (+https://sannetic.com/bot)"
     crawl_delay_seconds: float = 0.5
@@ -33,6 +33,9 @@ class Settings(BaseSettings):
     log_format: str = "console"
     pagespeed_api_key: str = ""
     auth_secret: str = ""
+    auth_disabled: bool = False
+    expose_docs: bool = False
+    debug: bool = False
     agency_email: str = ""
     agency_password: str = ""
     agency_name: str = "Agentur"
