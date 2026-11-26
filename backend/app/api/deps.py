@@ -4,24 +4,28 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.database import get_db
 from app.core.security import AuthUser, auth_enabled, parse_token
+from app.core.sessions import SESSION_COOKIE
 from app.models import Membership, User
 
 
 def optional_user(
-    authorization: str | None = Header(default=None),
+    request: Request,
     db: Session = Depends(get_db),
 ) -> AuthUser | None:
-    if not authorization or not authorization.lower().startswith("bearer "):
-        if auth_enabled():
-            return None
+    """Load the user from the HttpOnly session cookie.
+
+    Authorization headers are ignored. A bearer token in page storage is not a session.
+    """
+
+    token = request.cookies.get(SESSION_COOKIE, "").strip()
+    if not token:
         return None
-    token = authorization.split(" ", 1)[1].strip()
     user = parse_token(token)
     if user is None:
         return None

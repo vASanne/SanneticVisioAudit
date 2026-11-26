@@ -115,28 +115,28 @@ export function HomeScreen() {
               </select>
             </div>
           ) : null}
-          <div className="form-group flex gap-2" style={{ alignItems: "center" }}>
+          <div className="form-group flex gap-2 form-check-row">
             <input id="follow" type="checkbox" checked={followLinks} onChange={(event) => setFollowLinks(event.target.checked)} />
             <label htmlFor="follow" className="check-label">
               Interne Links folgen
             </label>
           </div>
-          <div className="form-group flex gap-2" style={{ alignItems: "flex-start" }}>
+          <div className="form-group flex gap-2 form-check-row-start">
             <input id="render-js" type="checkbox" checked={renderJs} onChange={(event) => setRenderJs(event.target.checked)} />
             <label htmlFor="render-js" className="check-label">
               JavaScript rendern
-              <span className="text-muted" style={{ display: "block", fontWeight: 400 }}>
+              <span className="text-muted check-hint">
                 Nur für Seiten, deren Roh-HTML kaum Text enthält.
               </span>
             </label>
           </div>
-          <div className="form-group flex gap-2" style={{ alignItems: "center" }}>
+          <div className="form-group flex gap-2 form-check-row">
             <input id="probe-links" type="checkbox" checked={probeLinks} onChange={(event) => setProbeLinks(event.target.checked)} />
             <label htmlFor="probe-links" className="check-label">
               Unbesuchte interne Links prüfen
             </label>
           </div>
-          <div className="form-group flex gap-2" style={{ alignItems: "flex-start" }}>
+          <div className="form-group flex gap-2 form-check-row-start">
             <input id="llm-summary" type="checkbox" checked={llmSummary} onChange={(event) => setLlmSummary(event.target.checked)} />
             <label htmlFor="llm-summary" className="check-label">
               Inhaltliche Einschätzung (LLM)

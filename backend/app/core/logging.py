@@ -13,6 +13,7 @@ from app.core.config import get_settings
 _SENSITIVE_KEY = re.compile(r"(password|secret|token|api_key|authorization|credential)", re.IGNORECASE)
 _URL_USERINFO = re.compile(r"(://[^/\s:@]+:)([^@\s]+)@")
 _BEARER = re.compile(r"(?i)(bearer\s+)[A-Za-z0-9._\-+/=]+")
+_SESSION_COOKIE = re.compile(r"(?i)((?:visioaudit_session|visioaudit_csrf)=)[^;\s]+")
 _ASSIGNMENT = re.compile(
     r"(?i)(password|secret|token|api_key|authorization)(['\"]?\s*[:=]\s*['\"]?)([^\s,'\"}]+)"
 )
@@ -58,4 +59,5 @@ def _redact(_logger: object, _method: str, event_dict: dict[str, Any]) -> dict[s
 def _redact_text(value: str) -> str:
     value = _URL_USERINFO.sub(r"\1[redacted]@", value)
     value = _BEARER.sub(r"\1[redacted]", value)
+    value = _SESSION_COOKIE.sub(r"\1[redacted]", value)
     return _ASSIGNMENT.sub(r"\1\2[redacted]", value)

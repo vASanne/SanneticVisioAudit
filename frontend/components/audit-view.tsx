@@ -94,7 +94,7 @@ function AuditBody({
       </section>
 
       {audit.status === "completed" ? (
-        <p className="mt-8 flex gap-2" style={{ flexWrap: "wrap" }}>
+        <p className="mt-8 flex gap-2 wrap-row">
           <button type="button" className="btn btn-primary" onClick={() => void onOpenReport("html")}>
             HTML-Bericht öffnen
           </button>

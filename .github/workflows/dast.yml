@@ -1,0 +1,86 @@
+name: DAST
+
+on:
+  push:
+    branches: [main, "security/**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  zap-baseline:
+    name: OWASP ZAP baseline
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Write a CI-only env file
+        working-directory: VisioAudit-Infra
+        run: |
+          set -eu
+          auth_secret="$(openssl rand -hex 32)"
+          postgres_password="$(openssl rand -hex 24)"
+          redis_password="$(openssl rand -hex 24)"
+          minio_password="$(openssl rand -hex 24)"
+          agency_password="ci-$(openssl rand -hex 12)"
+          umask 077
+          cat > .env <<EOF
+          POSTGRES_USER=visio
+          POSTGRES_PASSWORD=${postgres_password}
+          POSTGRES_DB=visioaudit
+          REDIS_PASSWORD=${redis_password}
+          MINIO_ROOT_USER=visioaudit
+          MINIO_ROOT_PASSWORD=${minio_password}
+          NEXT_PUBLIC_API_URL=http://127.0.0.1:8000
+          AUTH_SECRET=${auth_secret}
+          AGENCY_EMAIL=ci@example.com
+          AGENCY_PASSWORD=${agency_password}
+          AGENCY_NAME=CI
+          COOKIE_SECURE=false
+          COOKIE_SAMESITE=lax
+          EOF
+          unset auth_secret postgres_password redis_password minio_password agency_password
+      - name: Start the stack
+        working-directory: VisioAudit-Infra
+        run: |
+          set -eu
+          if ! docker compose -f compose.yaml up -d --build; then
+            docker compose -f compose.yaml ps -a
+            docker compose -f compose.yaml logs --tail=120
+            exit 1
+          fi
+      - name: Wait until the API and the dashboard answer
+        run: |
+          set -eu
+          for _ in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8000/health >/dev/null && curl -fsS http://127.0.0.1:3000 >/dev/null; then
+              exit 0
+            fi
+            sleep 5
+          done
+          docker compose -f VisioAudit-Infra/compose.yaml logs --tail=80
+          exit 1
+      - name: ZAP baseline
+        run: |
+          set -eu
+          mkdir -p zap
+          # Host network so ZAP, running in Docker, can reach the published loopback ports.
+          # -I keeps warnings in the report and fails the job only on FAIL alerts.
+          docker run --rm --network host -v "$PWD/zap:/zap/wrk:rw" \
+            ghcr.io/zaproxy/zaproxy:stable \
+            zap-baseline.py -t http://127.0.0.1:8000 -I -J api-report.json -m 5
+          docker run --rm --network host -v "$PWD/zap:/zap/wrk:rw" \
+            ghcr.io/zaproxy/zaproxy:stable \
+            zap-baseline.py -t http://127.0.0.1:3000 -I -J web-report.json -m 5
+      - name: Upload ZAP reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zap-baseline
+          path: zap/
+      - name: Stop the stack
+        if: always()
+        working-directory: VisioAudit-Infra
+        run: docker compose -f compose.yaml down -v

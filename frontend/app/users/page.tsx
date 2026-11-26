@@ -88,7 +88,7 @@ export default function UsersPage() {
             onChange={(event) => setPassword(event.target.value)}
           />
         </div>
-        <div className="form-group flex gap-2" style={{ alignItems: "center" }}>
+        <div className="form-group flex gap-2 form-check-row">
           <input id="user-admin" type="checkbox" checked={isAdmin} onChange={(event) => setIsAdmin(event.target.checked)} />
           <label htmlFor="user-admin" className="check-label">
             Administrator
@@ -101,7 +101,7 @@ export default function UsersPage() {
             multiple
             value={clientIds}
             onChange={(event) => setClientIds(Array.from(event.target.selectedOptions).map((item) => item.value))}
-            style={{ minHeight: "8rem" }}
+            className="multi-select"
           >
             {clients.map((client) => (
               <option key={client.id} value={client.id}>

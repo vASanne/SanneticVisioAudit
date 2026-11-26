@@ -140,12 +140,17 @@ class LoginRequest(BaseModel):
         return _email(value)
 
 
+class CsrfToken(BaseModel):
+    """Double-submit token. This is not a session credential."""
+
+    csrf_token: str = Field(min_length=32, max_length=128)
+
+
 class LoginResponse(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
     user_name: str
     email: str
     is_admin: bool
+    csrf_token: str = Field(min_length=32, max_length=128)
 
 
 class AuthStatus(BaseModel):

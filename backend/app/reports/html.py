@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import html
 import re
 from datetime import datetime, timezone
@@ -20,6 +21,7 @@ from app.crawler.safety import logo_reference_is_safe
 from app.scoring.engine import METHODOLOGY
 
 _ASSETS = Path(__file__).parent / "assets"
+_STYLE_BLOCK = re.compile(r"<style>(.*?)</style>", re.DOTALL)
 _ENV = Environment(
     loader=FileSystemLoader(Path(__file__).parent / "templates"),
     autoescape=select_autoescape(enabled_extensions=("html",)),
@@ -96,17 +98,28 @@ def _font_faces() -> Markup:
         "@font-face{font-family:'JetBrains Mono';font-style:normal;font-weight:100 800;font-display:swap;"
         f"src:url(data:font/woff2;base64,{mono}) format('woff2');}}"
     )
-    return Markup(css)
+    # Font CSS is assembled from files shipped with this app, not from user input.
+    return Markup(css)  # nosec B704
 
 
 def _font_data(name: str) -> str:
     return base64.b64encode((_ASSETS / name).read_bytes()).decode("ascii")
 
 
+def report_style_hash(document: str) -> str:
+    """SHA-256 of the report style element text, base64, for a hash CSP source."""
+
+    match = _STYLE_BLOCK.search(document)
+    css = match.group(1) if match else ""
+    digest = hashlib.sha256(css.encode("utf-8")).digest()
+    return base64.b64encode(digest).decode("ascii")
+
+
 def _client_logo(logo_url: str | None) -> Markup:
     if logo_url and logo_reference_is_safe(logo_url):
         safe = html.escape(logo_url, quote=True)
-        return Markup(f'<img src="{safe}" alt="Logo" style="width:220px;height:auto;" />')
+        # logo_url was escaped above and passed logo_reference_is_safe.
+        return Markup(f'<img src="{safe}" alt="Logo" />')  # nosec B704
     return _logo()
 
 
@@ -114,7 +127,8 @@ def _client_logo(logo_url: str | None) -> Markup:
 def _logo() -> Markup:
     raw = (_ASSETS / "lockup.svg").read_text(encoding="utf-8")
     raw = re.sub(r"<\?xml[^>]*\?>", "", raw).strip()
-    return Markup(raw)
+    # The lockup is a static asset in this repository.
+    return Markup(raw)  # nosec B704
 
 
 def _http_url(value: object) -> str:
@@ -135,7 +149,8 @@ def _theme_overrides(tokens: dict[str, str] | None) -> Markup:
         lines.append(f"{html.escape(str(key))}:{html.escape(value.strip())};")
     if not lines:
         return Markup("")
-    return Markup(":root{" + "".join(lines) + "}")
+    # Names and values passed css_declaration_is_safe and are HTML-escaped.
+    return Markup(":root{" + "".join(lines) + "}")  # nosec B704
 
 
 def _counts(details: dict[str, object]) -> tuple[int, int]:

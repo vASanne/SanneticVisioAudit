@@ -9,6 +9,8 @@ services:
     environment:
       EXPOSE_DOCS: "true"
       LOG_LEVEL: info
+      # Published ports are plain HTTP. Browsers drop Secure cookies there.
+      COOKIE_SECURE: "false"
 
   worker:
     volumes:

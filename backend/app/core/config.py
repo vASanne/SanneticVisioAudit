@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -34,6 +35,9 @@ class Settings(BaseSettings):
     pagespeed_api_key: str = ""
     auth_secret: str = ""
     auth_disabled: bool = False
+    # Secure cookies are the default. Local HTTP (compose.override) sets this false.
+    cookie_secure: bool = True
+    cookie_samesite: str = "lax"
     expose_docs: bool = False
     debug: bool = False
     agency_email: str = ""
@@ -43,6 +47,14 @@ class Settings(BaseSettings):
     llm_api_key: str = ""
     llm_api_url: str = "https://api.openai.com/v1/chat/completions"
     llm_model: str = "gpt-4o-mini"
+
+    @field_validator("cookie_samesite")
+    @classmethod
+    def cookie_samesite_choice(cls, value: str) -> str:
+        cleaned = value.strip().lower()
+        if cleaned not in {"lax", "strict"}:
+            raise ValueError("COOKIE_SAMESITE must be lax or strict")
+        return cleaned
 
     @property
     def cors_origin_list(self) -> list[str]:

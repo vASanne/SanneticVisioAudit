@@ -1,2 +1,4 @@
 -r requirements.lock
 pytest==9.2.0
+fakeredis[lua]==2.41.0
+lupa==2.8

@@ -1,20 +1,41 @@
-"""Login, session status, and bootstrap of the agency admin."""
+"""Login, session cookie, CSRF token, and bootstrap of the agency admin."""
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import AuthUser, optional_user
-from app.api.schemas import AuthStatus, LoginRequest, LoginResponse
+from app.api.limiting import enforce_limit
+from app.api.schemas import AuthStatus, CsrfToken, LoginRequest, LoginResponse
 from app.core.config import get_settings
 from app.core.database import get_db
-from app.core.rate_limit import allow
-from app.core.security import AuthNotConfigured, auth_enabled, hash_password, issue_token, needs_rehash, verify_password
+from app.core.security import (
+    AuthNotConfigured,
+    auth_enabled,
+    hash_password,
+    issue_token,
+    needs_rehash,
+    verify_password,
+)
+from app.core.sessions import (
+    SESSION_TTL_SECONDS,
+    clear_session_cookie,
+    ensure_csrf_cookie,
+    rotate_csrf_cookie,
+    set_session_cookie,
+)
 from app.models import User
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+@router.get("/csrf", response_model=CsrfToken)
+def csrf_token(request: Request, response: Response) -> CsrfToken:
+    """Issue the double-submit token. The raw session secret is never included."""
+
+    return CsrfToken(csrf_token=ensure_csrf_cookie(request, response))
 
 
 @router.get("/status", response_model=AuthStatus)
@@ -38,16 +59,16 @@ def me(user: AuthUser | None = Depends(optional_user)) -> AuthStatus:
 
 
 @router.post("/login", response_model=LoginResponse)
-def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)) -> LoginResponse:
-    """Issue a bearer token for an agency user."""
+def login(payload: LoginRequest, request: Request, response: Response, db: Session = Depends(get_db)) -> LoginResponse:
+    """Check the password and set an HttpOnly session cookie."""
 
     peer = request.client.host if request.client else "unknown"
-    if not allow(f"login:{peer}", limit=10, window_seconds=60):
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Zu viele Anmeldeversuche. Bitte kurz warten.",
-            headers={"Retry-After": "60"},
-        )
+    enforce_limit(
+        f"login:{peer}",
+        limit=10,
+        window_seconds=60,
+        detail="Zu viele Anmeldeversuche. Bitte kurz warten.",
+    )
     ensure_agency_admin(db)
     email = payload.email.strip().lower()
     user = db.scalar(select(User).where(User.email == email))
@@ -59,13 +80,26 @@ def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)
         db.commit()
         db.refresh(user)
     try:
-        token = issue_token(AuthUser(id=user.id, email=user.email, name=user.name, is_admin=user.is_admin))
+        token = issue_token(
+            AuthUser(id=user.id, email=user.email, name=user.name, is_admin=user.is_admin),
+            ttl_seconds=SESSION_TTL_SECONDS,
+        )
     except AuthNotConfigured as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Anmeldung ist nicht konfiguriert.",
         ) from exc
-    return LoginResponse(access_token=token, user_name=user.name, email=user.email, is_admin=user.is_admin)
+    set_session_cookie(response, token)
+    csrf = rotate_csrf_cookie(response)
+    return LoginResponse(user_name=user.name, email=user.email, is_admin=user.is_admin, csrf_token=csrf)
+
+
+@router.post("/logout", response_model=CsrfToken)
+def logout(response: Response) -> CsrfToken:
+    """Clear the session cookie and rotate the CSRF token."""
+
+    clear_session_cookie(response)
+    return CsrfToken(csrf_token=rotate_csrf_cookie(response))
 
 
 def ensure_agency_admin(db: Session) -> User | None:

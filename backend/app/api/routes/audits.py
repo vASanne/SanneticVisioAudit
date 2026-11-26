@@ -8,14 +8,15 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app.api.deps import AuthUser, allowed_client_ids, assert_client_access, require_login
+from app.api.limiting import enforce_limit
 from app.api.mappers import to_detail, to_summary
 from app.api.schemas import AuditCreate, AuditDetail, AuditSummary
-from app.core.rate_limit import allow
 from app.core.database import get_db
+from app.core.http_security import STYLE_HASH_HEADER
 from app.crawler.errors import UnsafeUrlError
 from app.crawler.render import RenderUnavailableError
 from app.models import Audit
-from app.reports.html import render_audit_report, report_branding
+from app.reports.html import render_audit_report, report_branding, report_style_hash
 from app.reports.pdf import render_audit_pdf
 from app.services.audit_service import QueueUnavailableError, create_audit
 
@@ -39,12 +40,12 @@ def start_audit(
     """Queue a crawl. The response is the audit before any page has been fetched."""
 
     peer = str(user.id) if user is not None else (request.client.host if request.client else "unknown")
-    if not allow(f"audit:{peer}", limit=30, window_seconds=3600):
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Zu viele Audits in kurzer Zeit. Bitte später erneut versuchen.",
-            headers={"Retry-After": "60"},
-        )
+    enforce_limit(
+        f"audit:{peer}",
+        limit=30,
+        window_seconds=3600,
+        detail="Zu viele Audits in kurzer Zeit. Bitte später erneut versuchen.",
+    )
     try:
         audit = create_audit(db, payload, user=user)
     except UnsafeUrlError as exc:
@@ -95,7 +96,8 @@ def get_report(
 ) -> HTMLResponse:
     """Return the customer HTML report for a completed audit."""
 
-    return HTMLResponse(_render_html(_get_audit(db, audit_id, user)))
+    document = _render_html(_get_audit(db, audit_id, user))
+    return HTMLResponse(document, headers={STYLE_HASH_HEADER: report_style_hash(document)})
 
 
 @router.get("/{audit_id}/report.pdf")

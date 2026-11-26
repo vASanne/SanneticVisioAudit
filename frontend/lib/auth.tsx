@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 
-import { AuthStatus, getAuthStatus, getToken, login as apiLogin, setToken } from "@/lib/api";
+import { AuthStatus, clearLegacyTokenStorage, getAuthStatus, login as apiLogin, logout as apiLogout } from "@/lib/api";
 
 interface AuthContextValue {
   status: AuthStatus | null;
@@ -27,7 +27,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setStatus(next);
     } catch {
       setStatus({
-        auth_required: Boolean(getToken()),
+        auth_required: true,
         authenticated: false,
         user_name: null,
         email: null,
@@ -39,6 +39,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    clearLegacyTokenStorage();
     void refresh();
   }, [refresh]);
 
@@ -51,21 +52,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signIn = useCallback(
     async (email: string, password: string) => {
-      const result = await apiLogin(email, password);
-      setToken(result.access_token);
+      await apiLogin(email, password);
       await refresh();
     },
     [refresh],
   );
 
   const signOut = useCallback(() => {
-    setToken(null);
-    setStatus((prev) =>
-      prev
-        ? { ...prev, authenticated: false, user_name: null, email: null, is_admin: false }
-        : prev,
-    );
-    router.push("/login");
+    void (async () => {
+      try {
+        await apiLogout();
+      } catch {
+        clearLegacyTokenStorage();
+      }
+      setStatus((prev) =>
+        prev
+          ? { ...prev, authenticated: false, user_name: null, email: null, is_admin: false }
+          : prev,
+      );
+      router.push("/login");
+    })();
   }, [router]);
 
   const value = useMemo(

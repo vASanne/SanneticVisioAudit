@@ -100,25 +100,25 @@ export default function SchedulesPage() {
             onChange={(event) => setMaxPages(Number(event.target.value))}
           />
         </div>
-        <div className="form-group flex gap-2" style={{ alignItems: "center" }}>
+        <div className="form-group flex gap-2 form-check-row">
           <input id="sc-follow" type="checkbox" checked={followLinks} onChange={(event) => setFollowLinks(event.target.checked)} />
           <label htmlFor="sc-follow" className="check-label">
             Interne Links folgen
           </label>
         </div>
-        <div className="form-group flex gap-2" style={{ alignItems: "center" }}>
+        <div className="form-group flex gap-2 form-check-row">
           <input id="sc-probe" type="checkbox" checked={probeLinks} onChange={(event) => setProbeLinks(event.target.checked)} />
           <label htmlFor="sc-probe" className="check-label">
             Unbesuchte Links prüfen
           </label>
         </div>
-        <div className="form-group flex gap-2" style={{ alignItems: "center" }}>
+        <div className="form-group flex gap-2 form-check-row">
           <input id="sc-js" type="checkbox" checked={renderJs} onChange={(event) => setRenderJs(event.target.checked)} />
           <label htmlFor="sc-js" className="check-label">
             JavaScript rendern
           </label>
         </div>
-        <div className="form-group flex gap-2" style={{ alignItems: "center" }}>
+        <div className="form-group flex gap-2 form-check-row">
           <input id="sc-llm" type="checkbox" checked={llmSummary} onChange={(event) => setLlmSummary(event.target.checked)} />
           <label htmlFor="sc-llm" className="check-label">
             LLM-Einschätzung
