@@ -13,5 +13,8 @@ case "$REDIS_PASSWORD" in
 esac
 umask 077
 printf 'appendonly yes\nprotected-mode yes\nrequirepass %s\n' "$REDIS_PASSWORD" > /tmp/redis.conf
+# The official image drops to the redis user. A root-only config makes the server exit.
+chown redis:redis /tmp/redis.conf
+chmod 600 /tmp/redis.conf
 export REDISCLI_AUTH="$REDIS_PASSWORD"
 exec docker-entrypoint.sh redis-server /tmp/redis.conf

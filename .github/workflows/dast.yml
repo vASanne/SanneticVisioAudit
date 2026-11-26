@@ -44,7 +44,13 @@ jobs:
           unset auth_secret postgres_password redis_password minio_password agency_password
       - name: Start the stack
         working-directory: VisioAudit-Infra
-        run: docker compose -f compose.yaml up -d --build
+        run: |
+          set -eu
+          if ! docker compose -f compose.yaml up -d --build; then
+            docker compose -f compose.yaml ps -a
+            docker compose -f compose.yaml logs --tail=120
+            exit 1
+          fi
       - name: Wait until the API and the dashboard answer
         run: |
           set -eu
