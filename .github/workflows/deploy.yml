@@ -1,0 +1,46 @@
+# Deploys the commit that CI just tested on a push to main.
+#
+# workflow_run is the gate: a push does not deploy by itself. The event fires
+# when the CI workflow completes, including for pull requests, so the job
+# condition keeps deploys to a successful push of vASanne/SanneticVisioAudit
+# main. CodeQL and DAST are not extra gates. workflow_run runs when any one
+# listed workflow finishes, not when every workflow has succeeded, and
+# GITHUB_SHA inside this event is the workflow file on the default branch,
+# not the commit CI tested. The script therefore receives that tested SHA.
+# workflow_dispatch deploys github.sha of the ref you select.
+
+name: Deploy
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-visioaudit
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy visioaudit
+    if: >-
+      github.repository == 'vASanne/SanneticVisioAudit' &&
+      (
+        github.event_name == 'workflow_dispatch' ||
+        (
+          github.event.workflow_run.conclusion == 'success' &&
+          github.event.workflow_run.event == 'push' &&
+          github.event.workflow_run.head_branch == 'main' &&
+          github.event.workflow_run.head_repository.full_name == 'vASanne/SanneticVisioAudit'
+        )
+      )
+    runs-on: [self-hosted, va-visioaudit, deploy-visioaudit]
+    steps:
+      - name: Deploy the tested commit
+        env:
+          DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+        run: sudo -n /usr/local/sbin/deploy-visioaudit.sh "$DEPLOY_SHA"
