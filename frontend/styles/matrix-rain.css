@@ -1,0 +1,25 @@
+/* Sannetic Matrix rain: optional full-viewport backdrop.
+   Source: vASanne/SanneticDesign matrix/matrix-rain.css.
+   Requires sannetic-styleguide.css. The canvas is drawn by MatrixRain.
+   Negative z-index keeps it under in-flow content and modals;
+   pointer events pass through. */
+.matrix-rain {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.78;
+}
+
+/* Light theme: the rain is decorative only, keep it quiet */
+[data-theme="light"] .matrix-rain,
+.light .matrix-rain {
+  opacity: 0.35;
+}
+
+/* Dense content (tables, forms, cards) sits on a solid surface above the rain */
+.matrix-rain-shield {
+  background: var(--color-bg);
+}

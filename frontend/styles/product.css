@@ -77,6 +77,18 @@ input[type="checkbox"] {
   max-width: 28rem;
 }
 
+/* The shell used to paint an opaque page color over the fixed matrix canvas
+   (z-index: -1). The body already paints that color and the brand glow. */
+.app-shell {
+  background: transparent;
+}
+
+/* Glyphs stay off readable copy. Cards, the top bar, and the sidebar already
+   paint a surface, so the rain remains in the gaps (matrix-rain-shield). */
+:is(.app-content, main) :is(h1, h2, h3, h4, p, .table-responsive, .empty-text):not(.card, .card *) {
+  background-color: var(--color-bg);
+}
+
 .multi-select {
   min-height: 8rem;
 }
