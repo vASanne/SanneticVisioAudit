@@ -48,9 +48,7 @@ def context(**overrides: object) -> SiteContext:
         "start_url": START,
         "user_agent": UA,
         "robots_txt": (
-            "User-agent: *\nDisallow:\n\n"
-            "User-agent: GPTBot\nDisallow: /\n\n"
-            "Sitemap: https://example.com/sitemap.xml\n"
+            "User-agent: *\nDisallow:\n\nUser-agent: GPTBot\nDisallow: /\n\nSitemap: https://example.com/sitemap.xml\n"
         ),
         "robots_status": 200,
         "sitemap_status": 200,
@@ -119,7 +117,9 @@ def test_healthy_page_passes_the_mvp_checks() -> None:
 
 
 def test_http_error_fails_only_the_broken_url() -> None:
-    broken = page(url="https://example.com/missing", final_url="https://example.com/missing", status_code=404, is_html=False)
+    broken = page(
+        url="https://example.com/missing", final_url="https://example.com/missing", status_code=404, is_html=False
+    )
     results = by_id(context(pages=(page(), broken)))
     assert results["T01"].status == "fail"
     assert results["T01"].affected_urls == ("https://example.com/missing",)
@@ -259,7 +259,14 @@ def test_broken_internal_link_and_indexability() -> None:
 
 def test_aggregate_counts_affected_pages() -> None:
     first = CheckResult("T01", "fail", "critical", "HTTP-Status", "HTTP 404.", "Fix", ("https://example.com/a",))
-    second = CheckResult("T01", "pass", "critical", "HTTP-Status", "Alle geprüften Seiten antworten mit einem erfolgreichen HTTP-Status.", "Fix")
+    second = CheckResult(
+        "T01",
+        "pass",
+        "critical",
+        "HTTP-Status",
+        "Alle geprüften Seiten antworten mit einem erfolgreichen HTTP-Status.",
+        "Fix",
+    )
     third = CheckResult("T01", "fail", "critical", "HTTP-Status", "HTTP 500.", "Fix", ("https://example.com/c",))
     combined = aggregate([first, second, third])
     assert combined.status == "fail"

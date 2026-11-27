@@ -45,7 +45,9 @@ def create_key(
             created_by=actor.id if actor is not None else None,
         )
     except ApiKeyNotConfigured as exc:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="API-Schlüssel sind nicht konfiguriert.") from exc
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="API-Schlüssel sind nicht konfiguriert."
+        ) from exc
     except ApiKeyError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     record_key_event(
@@ -94,7 +96,9 @@ def rotate(
     try:
         secret = rotate_key(db, key)
     except ApiKeyNotConfigured as exc:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="API-Schlüssel sind nicht konfiguriert.") from exc
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="API-Schlüssel sind nicht konfiguriert."
+        ) from exc
     except ApiKeyError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     record_key_event(

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import structlog
 from sqlalchemy import select
@@ -19,7 +19,7 @@ def next_run_after(cron: str, moment: datetime) -> datetime:
     """Next UTC run for a daily fixed hour/minute cron (``M H * * *``)."""
 
     minute, hour = _daily_hour_minute(cron)
-    base = moment.astimezone(timezone.utc)
+    base = moment.astimezone(UTC)
     candidate = base.replace(hour=hour, minute=minute, second=0, microsecond=0)
     if candidate <= base:
         candidate = candidate + timedelta(days=1)
@@ -43,11 +43,9 @@ def _daily_hour_minute(cron: str) -> tuple[int, int]:
 def run_due_schedules(db: Session, *, now: datetime | None = None) -> int:
     """Enqueue audits for every enabled schedule that is due. Returns the count."""
 
-    moment = now or datetime.now(timezone.utc)
+    moment = now or datetime.now(UTC)
     rows = db.scalars(
-        select(AuditSchedule)
-        .where(AuditSchedule.enabled.is_(True))
-        .options(selectinload(AuditSchedule.client))
+        select(AuditSchedule).where(AuditSchedule.enabled.is_(True)).options(selectinload(AuditSchedule.client))
     ).all()
     started = 0
     for schedule in rows:

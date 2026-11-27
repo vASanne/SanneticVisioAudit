@@ -27,8 +27,12 @@ def upgrade() -> None:
     op.create_table(
         "memberships",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("user_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("client_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("clients.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "user_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+        ),
+        sa.Column(
+            "client_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("clients.id", ondelete="CASCADE"), nullable=False
+        ),
         sa.Column("role", sa.String(32), nullable=False, server_default="member"),
         sa.UniqueConstraint("user_id", "client_id", name="uq_membership_user_client"),
     )
@@ -37,7 +41,9 @@ def upgrade() -> None:
     op.create_table(
         "audit_schedules",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("client_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("clients.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "client_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("clients.id", ondelete="CASCADE"), nullable=False
+        ),
         sa.Column("url", sa.Text(), nullable=False),
         sa.Column("cron", sa.String(64), nullable=False, server_default="0 6 * * *"),
         sa.Column("enabled", sa.Boolean(), nullable=False, server_default=sa.text("true")),

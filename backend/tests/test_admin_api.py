@@ -1,15 +1,14 @@
 """Auth status, users, and watchlist schemas smoke through helpers."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
-from pydantic import ValidationError
-
 from app.api.schemas import ScheduleCreate, WatchlistCreate, WatchlistUpdate
 from app.core.config import get_settings
 from app.core.security import AuthUser, hash_password, issue_token, parse_token, verify_password
 from app.services.schedule_service import next_run_after
+from pydantic import ValidationError
 
 
 def test_user_password_and_token_for_admin_ui(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -28,7 +27,7 @@ def test_watchlist_and_schedule_cron_validators() -> None:
     assert schedule.cron == "30 7 * * *"
     item = WatchlistCreate(client_id=uuid4(), url="https://example.com/blog", renew_enabled=True, cron="0 6 * * *")
     assert item.renew_enabled is True
-    nxt = next_run_after("0 6 * * *", datetime(2026, 11, 15, 5, 0, tzinfo=timezone.utc))
+    nxt = next_run_after("0 6 * * *", datetime(2026, 11, 15, 5, 0, tzinfo=UTC))
     assert nxt.hour == 6
 
 

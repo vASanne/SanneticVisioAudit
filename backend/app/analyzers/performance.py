@@ -9,7 +9,10 @@ T09 = Spec(
     "T09",
     "high",
     "Core Web Vitals",
-    "LCP unter 2,5 Sekunden, INP unter 200 Millisekunden und CLS unter 0,1 bringen. Feld-Daten aus CrUX gehen vor, sonst zählt der Lab-Wert.",
+    (
+        "LCP unter 2,5 Sekunden, INP unter 200 Millisekunden und CLS unter 0,1 bringen. "
+        "Feld-Daten aus CrUX gehen vor, sonst zählt der Lab-Wert."
+    ),
 )
 
 _LCP_GOOD = 2500
@@ -35,9 +38,7 @@ def check_pagespeed(context: SiteContext) -> CheckResult | None:
     if poor:
         return result(T09, "fail", f"{source}: {', '.join(poor)} liegen im schlechten Bereich.", (context.start_url,))
     missing = [
-        name
-        for name, value in (("LCP", facts.lcp_ms), ("INP", facts.inp_ms), ("CLS", facts.cls))
-        if value is None
+        name for name, value in (("LCP", facts.lcp_ms), ("INP", facts.inp_ms), ("CLS", facts.cls)) if value is None
     ]
     if not mid and not missing:
         return result(T09, "pass", f"{source} für LCP, INP und CLS liegen im guten Bereich.")

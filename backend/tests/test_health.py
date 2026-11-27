@@ -1,10 +1,9 @@
 """Liveness is public, minimal, and independent of Redis."""
 
 import redis
-from fastapi.testclient import TestClient
-
 from app.core import rate_limit
 from app.main import app
+from fastapi.testclient import TestClient
 
 
 class _DownRedis:

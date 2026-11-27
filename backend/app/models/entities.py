@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, func
@@ -16,7 +16,7 @@ from app.models.base import Base
 def utcnow() -> datetime:
     """Timezone-aware timestamp for ORM defaults."""
 
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class User(Base):
@@ -96,7 +96,9 @@ class Audit(Base):
     error_message: Mapped[str | None] = mapped_column(Text, default=None)
 
     client: Mapped[Client] = relationship(back_populates="audits")
-    pages: Mapped[list[Page]] = relationship(back_populates="audit", cascade="all, delete-orphan", order_by="Page.position")
+    pages: Mapped[list[Page]] = relationship(
+        back_populates="audit", cascade="all, delete-orphan", order_by="Page.position"
+    )
     issues: Mapped[list[Issue]] = relationship(back_populates="audit", cascade="all, delete-orphan")
     scores: Mapped[list[Score]] = relationship(back_populates="audit", cascade="all, delete-orphan")
 

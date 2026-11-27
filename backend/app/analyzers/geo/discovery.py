@@ -12,7 +12,10 @@ G01 = Spec(
     "G01",
     "critical",
     "Zugriff für AI-Suchmaschinen",
-    "OAI-SearchBot, PerplexityBot, Claude-SearchBot und Google-Extended in robots.txt ausdrücklich erlauben. Trainings-Bots wie GPTBot können davon getrennt eingeschränkt werden.",
+    (
+        "OAI-SearchBot, PerplexityBot, Claude-SearchBot und Google-Extended in robots.txt "
+        "ausdrücklich erlauben. Trainings-Bots wie GPTBot können davon getrennt eingeschränkt werden."
+    ),
     quick_win=True,
 )
 G04 = Spec(
@@ -96,7 +99,12 @@ def check_training_split(context: SiteContext) -> CheckResult:
 
     policy = RobotsPolicy(context.robots_txt, context.robots_status)
     if policy.unreadable or not policy.body.strip():
-        return result(G02, "warning", "Ohne lesbare robots.txt ist die Trennung von Training und Suche nicht festgelegt.", (context.start_url,))
+        return result(
+            G02,
+            "warning",
+            "Ohne lesbare robots.txt ist die Trennung von Training und Suche nicht festgelegt.",
+            (context.start_url,),
+        )
     blocked_search = [bot for bot in AI_SEARCH_BOTS if not policy.allowed(bot, context.start_url)]
     if blocked_search:
         return result(G02, "fail", f"Such-Bots sind blockiert: {', '.join(blocked_search)}.", (context.start_url,))

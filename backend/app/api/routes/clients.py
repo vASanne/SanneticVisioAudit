@@ -154,4 +154,3 @@ def _logo(value: str | None) -> str | None:
         raise SettingsRejected("Die Logo-URL ist nicht erlaubt.")
     assert_public_url(text)
     return text
-

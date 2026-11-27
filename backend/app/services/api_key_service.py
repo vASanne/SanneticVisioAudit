@@ -2,14 +2,21 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import UUID
 
 import structlog
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.api_keys import ApiKeyNotConfigured, event_key_id, generate_key_id, generate_secret, is_key_id, secret_hash
+from app.core.api_keys import (
+    ApiKeyNotConfigured,
+    event_key_id,
+    generate_key_id,
+    generate_secret,
+    is_key_id,
+    secret_hash,
+)
 from app.models import ApiKey, ApiKeyEvent, Client, Membership, User
 
 logger = structlog.get_logger()
@@ -102,7 +109,7 @@ def rotate_key(db: Session, key: ApiKey) -> str:
 
 def revoke_key(db: Session, key: ApiKey) -> None:
     if key.revoked_at is None:
-        key.revoked_at = datetime.now(timezone.utc)
+        key.revoked_at = datetime.now(UTC)
         db.flush()
     logger.info("api_key_revoked", key_id=key.key_id)
 
@@ -173,8 +180,7 @@ def _insert_key(
 def _clean_scopes(scopes: list[str]) -> list[str]:
     if not scopes or any(item not in _SCOPES for item in scopes):
         raise ApiKeyError("Unbekannter Scope.")
-    ordered = [item for item in _SCOPES if item in scopes]
-    return ordered
+    return [item for item in _SCOPES if item in scopes]
 
 
 def _unused_key_id(db: Session) -> str:

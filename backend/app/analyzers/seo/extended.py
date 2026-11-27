@@ -107,12 +107,12 @@ def check_internal_links(context: SiteContext) -> CheckResult | None:
 
     pages = [page for page in context.pages if page.is_html and 200 <= page.status_code < 300]
     if len(pages) < 2:
-        return result(T13, "pass", "Bei einer einzelnen Seite gibt es keine interne Verlinkung zu prüfen.") if pages else None
-    lonely = [
-        page.final_url
-        for page in pages
-        if not any(same_site(page.final_url, link) for link in page.links)
-    ]
+        return (
+            result(T13, "pass", "Bei einer einzelnen Seite gibt es keine interne Verlinkung zu prüfen.")
+            if pages
+            else None
+        )
+    lonely = [page.final_url for page in pages if not any(same_site(page.final_url, link) for link in page.links)]
     if not lonely:
         return result(T13, "pass", "Die gelesenen Seiten verlinken innerhalb der Website.")
     if len(lonely) * 2 >= len(pages):

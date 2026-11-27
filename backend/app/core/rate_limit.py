@@ -15,15 +15,21 @@ from __future__ import annotations
 
 import secrets
 import threading
+from typing import Any, Protocol, cast
 
 import redis
 import structlog
 
 logger = structlog.get_logger()
 
+
+class _EvalClient(Protocol):
+    def eval(self, script: str, numkeys: int, *keys_and_args: str) -> object: ...
+
+
 _LOCK = threading.Lock()
 _pool: redis.Redis | None = None
-_override: object | None = None
+_override: _EvalClient | None = None
 
 # ARGV: window milliseconds, limit, unique member.
 # TIME comes from Redis so workers do not need a shared clock.
@@ -64,10 +70,12 @@ def allow(key: str, *, limit: int, window_seconds: float) -> bool:
         raise RateLimitUnavailable("rate limit store unavailable") from exc
     if isinstance(result, bytes):
         result = result.decode("ascii")
+    if isinstance(result, bool) or not isinstance(result, (int, str)):
+        raise RateLimitUnavailable("rate limit store unavailable")
     return int(result) == 1
 
 
-def set_client(client: object | None) -> None:
+def set_client(client: _EvalClient | None) -> None:
     """Replace the Redis client. Tests inject a fake; production leaves this unset."""
 
     global _override
@@ -77,14 +85,14 @@ def set_client(client: object | None) -> None:
 def reset() -> None:
     """Drop limiter keys on the injected client. Used by tests."""
 
-    client = _override if _override is not None else _pool
+    client: Any = _override if _override is not None else _pool
     if client is None or not hasattr(client, "scan_iter"):
         return
     for key in client.scan_iter(match="rl:*"):
         client.delete(key)
 
 
-def _client() -> object:
+def _client() -> _EvalClient:
     if _override is not None:
         return _override
     global _pool
@@ -100,4 +108,5 @@ def _client() -> object:
                     health_check_interval=30,
                     decode_responses=True,
                 )
-    return _pool
+    # redis-py types *keys_and_args narrower than a structural protocol can express.
+    return cast(_EvalClient, _pool)

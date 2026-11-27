@@ -44,9 +44,13 @@ def create_audit(
         "probe_internal_links": payload.probe_internal_links,
         "llm_summary": payload.llm_summary,
     }
-    for key, value in (extra_config or {}).items():
-        if key in {"source", "api_key_id"} and isinstance(value, str) and 1 <= len(value) <= 80:
-            config[key] = value
+    config.update(
+        {
+            key: value
+            for key, value in (extra_config or {}).items()
+            if key in {"source", "api_key_id"} and isinstance(value, str) and 1 <= len(value) <= 80
+        }
+    )
     audit = Audit(
         client=client,
         url=normalized,

@@ -24,7 +24,11 @@ def list_users(
     db: Session = Depends(get_db),
     _: AuthUser | None = Depends(require_admin),
 ) -> list[UserRead]:
-    rows = db.scalars(select(User).options(selectinload(User.memberships), selectinload(User.api_keys)).order_by(User.created_at.desc())).all()
+    rows = db.scalars(
+        select(User)
+        .options(selectinload(User.memberships), selectinload(User.api_keys))
+        .order_by(User.created_at.desc())
+    ).all()
     return [_read(row) for row in rows]
 
 
@@ -64,13 +68,17 @@ def update_user(
     user = db.scalar(select(User).where(User.id == user_id).options(selectinload(User.memberships)))
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Nutzer nicht gefunden.")
-    if user.is_api_user and (payload.password is not None or payload.email is not None or payload.client_ids is not None):
+    if user.is_api_user and (
+        payload.password is not None or payload.email is not None or payload.client_ids is not None
+    ):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="API-Nutzer haben kein Passwort und keinen änderbaren Login.",
         )
     if user.is_api_user and payload.is_admin:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="API-Nutzer können keine Administratoren sein.")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="API-Nutzer können keine Administratoren sein."
+        )
     if payload.email is not None:
         email = payload.email.strip().lower()
         clash = db.scalar(select(User.id).where(User.email == email, User.id != user.id))
@@ -136,7 +144,9 @@ def _create_api_user(db: Session, payload: UserCreate, actor: AuthUser | None) -
             email=payload.email,
         )
     except ApiKeyNotConfigured as exc:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="API-Schlüssel sind nicht konfiguriert.") from exc
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="API-Schlüssel sind nicht konfiguriert."
+        ) from exc
     except ApiKeyError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     record_key_event(

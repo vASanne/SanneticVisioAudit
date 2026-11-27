@@ -1,9 +1,9 @@
 """Public routing: Caddy forwards /api unchanged, so routes stay under that prefix."""
 
-from fastapi.routing import APIRoute
-
+import pytest
 from app.core.config import get_settings
 from app.main import app
+from fastapi.routing import APIRoute
 
 
 def _paths() -> set[str]:
@@ -27,7 +27,7 @@ def test_routes_stay_under_the_public_api_prefix() -> None:
     assert all(path in {"/", "/health"} or path.startswith("/api/") for path in paths)
 
 
-def test_root_path_is_empty_unless_a_proxy_strips_the_prefix(monkeypatch) -> None:
+def test_root_path_is_empty_unless_a_proxy_strips_the_prefix(monkeypatch: pytest.MonkeyPatch) -> None:
     """Uvicorn receives ROOT_PATH only when a proxy strips /api. Default is empty."""
 
     assert get_settings().root_path == ""

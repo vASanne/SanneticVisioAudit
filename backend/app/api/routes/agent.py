@@ -232,7 +232,9 @@ def audit_status(
     "/audits/{audit_id}",
     response_model=AuditDetail,
     summary="Fetch the stored audit result",
-    description="Scores and findings are included when the run has produced them. The row stays stored for later reads.",
+    description=(
+        "Scores and findings are included when the run has produced them. The row stays stored for later reads."
+    ),
 )
 def audit_result(
     audit_id: UUID,

@@ -37,7 +37,12 @@ cd backend
 python -m venv .venv
 .venv/bin/pip install -r requirements-dev.txt
 .venv/bin/pytest
+.venv/bin/ruff check .
+.venv/bin/ruff format --check .
+.venv/bin/mypy
 ```
+
+`ruff check` covers pyflakes, import order, pyupgrade, bugbear, and the Bandit rule set. `ruff format --check` enforces the formatter at a line length of 120. `mypy` runs in strict mode over `app`, `tests`, and `alembic`. All three fail when they report a finding. Ruff and mypy are pinned in `backend/requirements-dev.txt`, and their settings live in `backend/pyproject.toml`.
 
 ```bash
 cd frontend
@@ -95,4 +100,4 @@ HTML audit reports keep their CSS in one `<style>` block. The API CSP allows tha
 
 ## Continuous integration
 
-GitHub Actions runs the test suite, Bandit, Semgrep, CodeQL, `pip-audit`, `npm audit`, and gitleaks. No passwords are stored in the workflow files. The DAST job writes a throwaway `VisioAudit-Infra/.env` at runtime and starts `docker compose -f compose.yaml`. OWASP ZAP then runs a baseline scan against the API and the dashboard on the runner's loopback interface. `COOKIE_SECURE=false` in that job is only so the scanner can speak HTTP. Warnings do not fail the baseline (`zap-baseline.py -I`); failing alerts do. The scan is unauthenticated.
+GitHub Actions runs the test suite, Ruff (lint and format), mypy, Bandit, Semgrep, CodeQL, `pip-audit`, `npm audit`, and gitleaks. Ruff and mypy fail the workflow when they report a finding, as the existing test and security jobs do. No passwords are stored in the workflow files. The DAST job writes a throwaway `VisioAudit-Infra/.env` at runtime and starts `docker compose -f compose.yaml`. OWASP ZAP then runs a baseline scan against the API and the dashboard on the runner's loopback interface. `COOKIE_SECURE=false` in that job is only so the scanner can speak HTTP. Warnings do not fail the baseline (`zap-baseline.py -I`); failing alerts do. The scan is unauthenticated.

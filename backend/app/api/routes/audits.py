@@ -123,9 +123,13 @@ def get_report_pdf(
 
 def _render_html(audit: Audit) -> str:
     if audit.status != "completed":
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Der Bericht ist erst nach Abschluss verfügbar.")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="Der Bericht ist erst nach Abschluss verfügbar."
+        )
     overall = next((score.details for score in audit.scores if score.category == "overall"), None)
-    brand = report_branding(audit.client.settings if audit.client else {}, audit.client.logo_url if audit.client else None)
+    brand = report_branding(
+        audit.client.settings if audit.client else {}, audit.client.logo_url if audit.client else None
+    )
     detail = to_detail(audit)
     return render_audit_report(
         client_name=audit.client.name,
@@ -163,5 +167,3 @@ def _category_score(audit: Audit, category: str) -> float | None:
         if score.category == category:
             return score.score
     return None
-
-

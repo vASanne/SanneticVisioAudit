@@ -6,7 +6,8 @@ import base64
 import hashlib
 import html
 import re
-from datetime import datetime, timezone
+from collections.abc import Sequence
+from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -17,7 +18,6 @@ from markupsafe import Markup
 
 from app.core.client_settings import css_declaration_is_safe
 from app.crawler.safety import logo_reference_is_safe
-
 from app.scoring.engine import METHODOLOGY
 
 _ASSETS = Path(__file__).parent / "assets"
@@ -43,8 +43,8 @@ def render_audit_report(
     pages_crawled: int,
     scores: dict[str, float | None],
     overall_details: dict[str, object] | None,
-    issues: list[object],
-    pages: list[object],
+    issues: Sequence[object],
+    pages: Sequence[object],
     logo_url: str | None = None,
     white_label: bool = False,
     theme_tokens: dict[str, str] | None = None,
@@ -80,7 +80,8 @@ def report_branding(settings: dict[str, Any] | None, logo_url: str | None) -> di
 
     data = settings or {}
     white_label = bool(data.get("white_label")) or bool(logo_url)
-    tokens = data.get("css_vars") if isinstance(data.get("css_vars"), dict) else {}
+    raw_tokens = data.get("css_vars")
+    tokens = raw_tokens if isinstance(raw_tokens, dict) else {}
     return {
         "white_label": white_label,
         "logo_url": logo_url,
@@ -99,7 +100,7 @@ def _font_faces() -> Markup:
         f"src:url(data:font/woff2;base64,{mono}) format('woff2');}}"
     )
     # Font CSS is assembled from files shipped with this app, not from user input.
-    return Markup(css)  # nosec B704
+    return Markup(css)  # nosec B704  # noqa: S704
 
 
 def _font_data(name: str) -> str:
@@ -119,7 +120,7 @@ def _client_logo(logo_url: str | None) -> Markup:
     if logo_url and logo_reference_is_safe(logo_url):
         safe = html.escape(logo_url, quote=True)
         # logo_url was escaped above and passed logo_reference_is_safe.
-        return Markup(f'<img src="{safe}" alt="Logo" />')  # nosec B704
+        return Markup(f'<img src="{safe}" alt="Logo" />')  # nosec B704  # noqa: S704
     return _logo()
 
 
@@ -128,7 +129,7 @@ def _logo() -> Markup:
     raw = (_ASSETS / "lockup.svg").read_text(encoding="utf-8")
     raw = re.sub(r"<\?xml[^>]*\?>", "", raw).strip()
     # The lockup is a static asset in this repository.
-    return Markup(raw)  # nosec B704
+    return Markup(raw)  # nosec B704  # noqa: S704
 
 
 def _http_url(value: object) -> str:
@@ -150,7 +151,7 @@ def _theme_overrides(tokens: dict[str, str] | None) -> Markup:
     if not lines:
         return Markup("")
     # Names and values passed css_declaration_is_safe and are HTML-escaped.
-    return Markup(":root{" + "".join(lines) + "}")  # nosec B704
+    return Markup(":root{" + "".join(lines) + "}")  # nosec B704  # noqa: S704
 
 
 def _counts(details: dict[str, object]) -> tuple[int, int]:
@@ -163,9 +164,9 @@ def _counts(details: dict[str, object]) -> tuple[int, int]:
 
 def _timestamp(value: datetime | None) -> str:
     if value is None:
-        moment = datetime.now(timezone.utc)
+        moment = datetime.now(UTC)
     elif value.tzinfo is None:
-        moment = value.replace(tzinfo=timezone.utc)
+        moment = value.replace(tzinfo=UTC)
     else:
-        moment = value.astimezone(timezone.utc)
+        moment = value.astimezone(UTC)
     return moment.strftime("%d.%m.%Y %H:%M UTC")

@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import replace
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import UUID
 
 import structlog
 from celery.exceptions import SoftTimeLimitExceeded
+from sqlalchemy.orm import Session
 
 from app.analyzers.engine import run_checks
 from app.core.config import get_settings
@@ -18,7 +19,7 @@ from app.crawler.errors import UnsafeUrlError
 from app.crawler.render import RenderUnavailableError
 from app.crawler.runner import CrawlOptions, crawl_site
 from app.crawler.types import CrawlOutput
-from app.domain import CategoryScore, CheckResult, PageSnapshot, SiteContext
+from app.domain import CategoryScore, CheckResult, PageSnapshot, PageSpeedFacts, SiteContext
 from app.extractors.html_extract import extract_page
 from app.models import Audit, Issue, Page, Score
 from app.scoring.engine import score_checks
@@ -60,7 +61,7 @@ def execute_audit(audit_id: UUID) -> None:
             pagespeed=pagespeed,
             pagespeed_error=pagespeed_error,
             link_status=link_status,
-            important_paths=tuple(extras.get("important_paths") or ()),
+            important_paths=_important_paths(extras),
         )
         checks = run_checks(context)
         scores = score_checks(checks)
@@ -96,7 +97,7 @@ def _claim(audit_id: UUID) -> tuple[str, CrawlOptions, dict[str, object]] | None
         if audit is None or audit.status != "pending":
             return None
         audit.status = "running"
-        audit.started_at = datetime.now(timezone.utc)
+        audit.started_at = datetime.now(UTC)
         config = dict(audit.config or {})
         options = _options(config)
         settings_blob = dict(audit.client.settings or {}) if audit.client else {}
@@ -113,13 +114,24 @@ def _claim(audit_id: UUID) -> tuple[str, CrawlOptions, dict[str, object]] | None
         return url, options, extras
 
 
+def _important_paths(extras: dict[str, object]) -> tuple[str, ...]:
+    raw_paths = extras.get("important_paths")
+    if not isinstance(raw_paths, list):
+        return ()
+    return tuple(str(item) for item in raw_paths)
+
+
 def _options(config: dict[str, object]) -> CrawlOptions:
     settings = get_settings()
     raw_pages = config.get("max_pages", 25)
-    try:
-        requested = int(raw_pages)  # type: ignore[arg-type]
-    except (TypeError, ValueError):
-        requested = 25
+    requested = 25
+    if isinstance(raw_pages, int) and not isinstance(raw_pages, bool):
+        requested = raw_pages
+    elif isinstance(raw_pages, str):
+        try:
+            requested = int(raw_pages)
+        except ValueError:
+            requested = 25
     follow = config.get("follow_links", True)
     render_js = config.get("render_js", False)
     return CrawlOptions(
@@ -139,9 +151,9 @@ def _probe_links(
 ) -> dict[str, int]:
     if extras.get("probe_internal_links") is False:
         return {}
-    from app.crawler.probe import probe_internal_links
-
     import asyncio
+
+    from app.crawler.probe import probe_internal_links
 
     settings = get_settings()
     return asyncio.run(
@@ -189,17 +201,13 @@ def _with_rendered_words(snapshots: tuple[PageSnapshot, ...], user_agent: str) -
     return tuple(replace(page, rendered_word_count=counts.get(page.final_url)) for page in snapshots)
 
 
-def _pagespeed(url: str) -> tuple[object, str | None]:
-    from app.domain import PageSpeedFacts
+def _pagespeed(url: str) -> tuple[PageSpeedFacts | None, str | None]:
     from app.services.pagespeed import fetch_pagespeed
 
     key = get_settings().pagespeed_api_key.strip()
     if not key:
         return None, None
-    facts, error = fetch_pagespeed(url, key)
-    if facts is not None and not isinstance(facts, PageSpeedFacts):
-        return None, error
-    return facts, error
+    return fetch_pagespeed(url, key)
 
 
 def _persist(
@@ -231,7 +239,7 @@ def _persist(
                 try:
                     storage_path = storage.put_html(audit_id, page_id, crawled.body)
                 except Exception:
-                    logger.warning("html_store_failed", url=snapshot.final_url)
+                    logger.exception("html_store_failed", url=snapshot.final_url)
             db.add(
                 Page(
                     id=page_id,
@@ -276,17 +284,17 @@ def _persist(
                 )
             )
         by_category: dict[str, float] = {}
-        for item in scores:
-            if item.score is None:
+        for scored in scores:
+            if scored.score is None:
                 continue
-            by_category[item.category] = item.score
-            db.add(Score(audit_id=audit_id, category=item.category, score=item.score, details=item.details))
+            by_category[scored.category] = scored.score
+            db.add(Score(audit_id=audit_id, category=scored.category, score=scored.score, details=scored.details))
         audit.pages_crawled = len(snapshots)
         audit.overall_score = by_category.get("overall")
         audit.seo_score = by_category.get("seo")
         audit.geo_score = by_category.get("geo")
         audit.status = "completed"
-        audit.finished_at = datetime.now(timezone.utc)
+        audit.finished_at = datetime.now(UTC)
         audit.error_message = None
         config = dict(audit.config or {})
         if advisory:
@@ -300,13 +308,13 @@ def _persist(
             url=audit.url,
             audit_id=audit_id,
             overall=by_category.get("overall"),
-            checked_at=audit.finished_at or datetime.now(timezone.utc),
+            checked_at=audit.finished_at or datetime.now(UTC),
         )
         db.commit()
 
 
 def _touch_watchlist(
-    db,
+    db: Session,
     *,
     client_id: UUID,
     url: str,
@@ -318,9 +326,7 @@ def _touch_watchlist(
 
     from app.models import WatchlistItem
 
-    rows = db.scalars(
-        select(WatchlistItem).where(WatchlistItem.client_id == client_id, WatchlistItem.url == url)
-    ).all()
+    rows = db.scalars(select(WatchlistItem).where(WatchlistItem.client_id == client_id, WatchlistItem.url == url)).all()
     for item in rows:
         item.last_audit_id = audit_id
         item.last_overall_score = overall
@@ -335,7 +341,7 @@ def _mark_failed(audit_id: UUID, message: str) -> None:
                 return
             audit.status = "failed"
             audit.error_message = message[:2000]
-            audit.finished_at = datetime.now(timezone.utc)
+            audit.finished_at = datetime.now(UTC)
             db.commit()
     except Exception:
         logger.exception("audit_failure_not_stored", audit_id=str(audit_id))

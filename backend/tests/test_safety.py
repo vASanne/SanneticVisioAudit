@@ -3,20 +3,19 @@
 import socket
 
 import pytest
-
 from app.crawler.errors import UnsafeUrlError
-from app.crawler.safety import assert_public_url, public_connect_host
 from app.crawler.robots import RobotsPolicy
+from app.crawler.safety import assert_public_url, public_connect_host
 from app.crawler.urls import crawl_key, document_key, normalize_start_url, repeats_document, same_site
 
 
-def _public(host: str, _port: object, *args: object, **kwargs: object) -> list[tuple[object, ...]]:
+def _public(host: str, _port: object, *_args: object, **_kwargs: object) -> list[tuple[object, ...]]:
     if host != "example.com":
         raise socket.gaierror(host)
     return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 0))]
 
 
-def _private(host: str, _port: object, *args: object, **kwargs: object) -> list[tuple[object, ...]]:
+def _private(_host: str, _port: object, *_args: object, **_kwargs: object) -> list[tuple[object, ...]]:
     return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.1.1.1", 0))]
 
 
@@ -39,7 +38,7 @@ def test_public_host_is_allowed() -> None:
     assert_public_url("https://example.com/audit", resolver=_public)
 
 
-def _mixed(host: str, _port: object, *args: object, **kwargs: object) -> list[tuple[object, ...]]:
+def _mixed(host: str, _port: object, *_args: object, **_kwargs: object) -> list[tuple[object, ...]]:
     if host != "example.com":
         raise socket.gaierror(host)
     return [
