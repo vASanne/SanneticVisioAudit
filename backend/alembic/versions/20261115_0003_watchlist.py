@@ -16,7 +16,9 @@ def upgrade() -> None:
     op.create_table(
         "watchlist_items",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("client_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("clients.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "client_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("clients.id", ondelete="CASCADE"), nullable=False
+        ),
         sa.Column("url", sa.Text(), nullable=False),
         sa.Column("label", sa.String(200), nullable=False, server_default=""),
         sa.Column("notes", sa.Text(), nullable=False, server_default=""),

@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import select
@@ -13,8 +13,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.agent_auth import AgentPrincipal
-from app.api.schemas import AgentAuditBatch, AgentAuditBatchResult, AuditCreate
-from app.crawler.errors import UnsafeUrlError
+from app.api.schemas import AgentAuditAccepted, AgentAuditBatch, AgentAuditBatchResult, AuditCreate
 from app.crawler.safety import assert_public_url
 from app.crawler.urls import normalize_start_url
 from app.models import ApiIdempotency, ApiKey, Audit
@@ -151,12 +150,11 @@ def submit_batch(
             continue
         try:
             run_audit_task.delay(str(audit.id))
-        except Exception:
-            # The broker error can include a URL. Keep it out of the log and the client body.
+        except Exception:  # noqa: BLE001  # broker errors can embed the target URL; do not log them
             queue_failed = True
             _mark_unqueued(db, audit)
     return AgentAuditBatchResult(
-        audits=[{"id": item.id, "url": item.url, "status": item.status} for item in created]
+        audits=[AgentAuditAccepted(id=item.id, url=item.url, status=item.status) for item in created]
     )
 
 
@@ -192,5 +190,5 @@ def _stale(existing: ApiIdempotency) -> bool:
     if created is None:
         return True
     if created.tzinfo is None:
-        created = created.replace(tzinfo=timezone.utc)
-    return datetime.now(timezone.utc) - created > _CLAIM_TTL
+        created = created.replace(tzinfo=UTC)
+    return datetime.now(UTC) - created > _CLAIM_TTL

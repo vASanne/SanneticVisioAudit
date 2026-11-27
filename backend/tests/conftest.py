@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
+import pytest
+from app.core import rate_limit
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.compiler import compiles
-
-import pytest
-
-from app.core import rate_limit
 
 
 @compiles(JSONB, "sqlite")

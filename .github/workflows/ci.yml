@@ -102,3 +102,36 @@ jobs:
           curl -fsSL -o gitleaks.tar.gz "https://github.com/gitleaks/gitleaks/releases/download/v${version}/gitleaks_${version}_linux_x64.tar.gz"
           tar -xzf gitleaks.tar.gz gitleaks
           ./gitleaks detect --source . --redact --no-banner --exit-code 1
+
+  ruff:
+    name: Ruff
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+      - name: Lint and format
+        working-directory: backend
+        run: |
+          python -m pip install -r requirements-dev.txt
+          ruff check .
+          ruff format --check .
+
+  mypy:
+    name: mypy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+      - name: Type check
+        working-directory: backend
+        run: |
+          python -m pip install -r requirements-dev.txt
+          mypy

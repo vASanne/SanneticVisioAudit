@@ -13,7 +13,10 @@ T01 = Spec(
     "T01",
     "critical",
     "HTTP-Status",
-    "Indexierbare Seiten müssen mit HTTP 200 antworten. Fehlerseiten und defekte Ziele auf eine erreichbare URL führen oder aus der Navigation nehmen.",
+    (
+        "Indexierbare Seiten müssen mit HTTP 200 antworten. "
+        "Fehlerseiten und defekte Ziele auf eine erreichbare URL führen oder aus der Navigation nehmen."
+    ),
 )
 T02 = Spec(
     "T02",

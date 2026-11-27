@@ -4,7 +4,6 @@ import hashlib
 from uuid import uuid4
 
 import pytest
-
 from app.core.config import get_settings
 from app.core.security import (
     AuthNotConfigured,
@@ -54,18 +53,18 @@ def test_log_redaction_strips_session_cookies() -> None:
     assert "abc.def" not in cleaned
     assert "secrettoken" not in cleaned
     assert "visioaudit_session=[redacted]" in cleaned
-    secret = "vas_example_replace_me"
-    header = _redact_text(f"X-Api-Secret: {secret}")
-    assert secret not in header
-    event = _redact(None, None, {"api_secret": secret, "key_id": "vak_example"})
-    assert event["api_secret"] == "[redacted]"
+    sample = "vas_example_replace_me"
+    header = _redact_text(f"X-Api-Secret: {sample}")
+    assert sample not in header
+    event = _redact(None, "info", {"api_secret": sample, "key_id": "vak_example"})
+    redacted = event["api_secret"]
+    assert redacted == "[redacted]"
     assert event["key_id"] == "vak_example"
 
 
 def test_samesite_none_is_rejected() -> None:
-    from pydantic import ValidationError
-
     from app.core.config import Settings
+    from pydantic import ValidationError
 
     with pytest.raises(ValidationError):
         Settings(cookie_samesite="none")

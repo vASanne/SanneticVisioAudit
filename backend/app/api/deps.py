@@ -6,12 +6,22 @@ from uuid import UUID
 
 from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy import select
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.security import AuthUser, auth_enabled, parse_token
 from app.core.sessions import SESSION_COOKIE
 from app.models import Membership, User
+
+__all__ = [
+    "AuthUser",
+    "allowed_client_ids",
+    "assert_client_access",
+    "optional_user",
+    "require_admin",
+    "require_login",
+    "require_user",
+]
 
 
 def optional_user(
@@ -72,9 +82,7 @@ def allowed_client_ids(db: Session, user: AuthUser | None) -> set[UUID] | None:
         return None if not auth_enabled() else set()
     if user.is_admin:
         return None
-    rows = db.scalars(
-        select(Membership.client_id).where(Membership.user_id == user.id)
-    ).all()
+    rows = db.scalars(select(Membership.client_id).where(Membership.user_id == user.id)).all()
     return set(rows)
 
 

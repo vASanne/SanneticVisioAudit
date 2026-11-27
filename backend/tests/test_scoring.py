@@ -9,12 +9,17 @@ def _check(check_id: str, status: str, severity: str) -> CheckResult:
 
 
 def test_weights_and_warning_factor() -> None:
-    scores = {item.category: item.score for item in score_checks([
-        _check("T01", "fail", "critical"),
-        _check("O01", "pass", "high"),
-        _check("O02", "warning", "medium"),
-        _check("G04", "pass", "critical"),
-    ])}
+    scores = {
+        item.category: item.score
+        for item in score_checks(
+            [
+                _check("T01", "fail", "critical"),
+                _check("O01", "pass", "high"),
+                _check("O02", "warning", "medium"),
+                _check("G04", "pass", "critical"),
+            ]
+        )
+    }
     # technical: 0/5, on-page: (3 + 1) / 5, seo: (0 + 3 + 1) / 10, geo: 5/5, overall: 9/15
     assert scores["technical"] == 0.0
     assert scores["onpage"] == 80.0

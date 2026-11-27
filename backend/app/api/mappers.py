@@ -81,8 +81,7 @@ def to_detail(audit: Audit) -> AuditDetail:
         ],
         issues=[item for _, item in ranked],
         scores=[
-            ScoreRead(category=score.category, score=score.score, details=score.details or {})
-            for score in audit.scores
+            ScoreRead(category=score.category, score=score.score, details=score.details or {}) for score in audit.scores
         ],
         llm_summary=llm if isinstance(llm, str) else None,
         gsc_notes=[str(item) for item in notes] if isinstance(notes, list) else [],

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -180,8 +180,8 @@ def _future_expiry(value: datetime | None) -> datetime | None:
     if value is None:
         return None
     if value.tzinfo is None:
-        value = value.replace(tzinfo=timezone.utc)
-    if value <= datetime.now(timezone.utc):
+        value = value.replace(tzinfo=UTC)
+    if value <= datetime.now(UTC):
         raise ValueError("Ablaufzeit muss in der Zukunft liegen.")
     return value
 

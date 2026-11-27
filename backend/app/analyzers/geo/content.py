@@ -6,11 +6,11 @@ G14 requires G05, G06, G07, and G08. It is omitted only when those checks did no
 from __future__ import annotations
 
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from urllib.parse import urlsplit
 
 from app.analyzers.common import Spec, result
-from app.domain import CheckResult, PageSnapshot
+from app.domain import CheckResult, CheckStatus, PageSnapshot
 
 G05 = Spec(
     "G05",
@@ -22,19 +22,28 @@ G06 = Spec(
     "G06",
     "high",
     "Zitierbare Abschnitte",
-    "Mindestens einen in sich geschlossenen Absatz mit 40–100 Wörtern formulieren, den eine AI-Antwort übernehmen kann.",
+    (
+        "Mindestens einen in sich geschlossenen Absatz mit 40–100 Wörtern formulieren, "
+        "den eine AI-Antwort übernehmen kann."
+    ),
 )
 G08 = Spec(
     "G08",
     "high",
     "Klare Entität",
-    "Den Marken- oder Organisationsnamen im Text mehrfach und gleichlautend nennen, passend zu Organization- oder WebSite-Schema.",
+    (
+        "Den Marken- oder Organisationsnamen im Text mehrfach und gleichlautend nennen, "
+        "passend zu Organization- oder WebSite-Schema."
+    ),
 )
 G14 = Spec(
     "G14",
     "high",
     "Zitierbarkeit",
-    "Direkte Antwort, zitierbare Absätze und eine klare Marke zusammenbringen. Das ist die Grundlage, auf der AI-Systeme die Seite zitieren.",
+    (
+        "Direkte Antwort, zitierbare Absätze und eine klare Marke zusammenbringen. "
+        "Das ist die Grundlage, auf der AI-Systeme die Seite zitieren."
+    ),
 )
 
 _ORG_TYPES = {"organization", "website", "localbusiness", "corporation", "brand"}
@@ -175,7 +184,7 @@ def check_freshness(page: PageSnapshot) -> CheckResult:
     if not years:
         return result(G11, "warning", "Ein Datum ist gesetzt, das Jahr ist nicht lesbar.", (page.final_url,))
     newest = max(years)
-    current = datetime.now(timezone.utc).year
+    current = datetime.now(UTC).year
     if newest >= current - 2:
         return result(G11, "pass", f"Das neueste Datensignal liegt im Jahr {newest}.")
     if newest >= current - 5:
@@ -214,7 +223,7 @@ def check_citability(results: list[CheckResult]) -> CheckResult | None:
     if set(wanted) == set(keys) and score >= 0.75:
         return result(G14, "pass", "Antwort, zitierbare Absätze, Zahlen und Markenklarheit stützen die Zitierbarkeit.")
     listed = ", ".join(labels[key] for key in weak)
-    status = "warning" if score >= 0.4 else "fail"
+    status: CheckStatus = "warning" if score >= 0.4 else "fail"
     return result(G14, status, f"Die Zitierbarkeit ist unvollständig. Offen: {listed}.", urls)
 
 

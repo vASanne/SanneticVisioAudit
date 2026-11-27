@@ -1,11 +1,10 @@
 """Headers, hidden docs, validation errors, and the login rate limit."""
 
-from fastapi.testclient import TestClient
-
 from app.core.http_security import checked_origins, content_security_policy
 from app.core.rate_limit import allow, reset
 from app.main import app
 from app.reports.html import render_audit_report, report_style_hash
+from fastapi.testclient import TestClient
 
 
 def test_health_sends_security_headers_and_hides_docs() -> None:
@@ -74,10 +73,9 @@ def test_wildcard_origin_is_rejected() -> None:
 
 
 def test_html_response_csp_uses_the_style_hash() -> None:
+    from app.core.http_security import STYLE_HASH_HEADER, SecurityMiddleware
     from fastapi import FastAPI
     from fastapi.responses import HTMLResponse
-
-    from app.core.http_security import STYLE_HASH_HEADER, SecurityMiddleware
 
     document = "<html><style>body{color:#111}</style></html>"
     digest = report_style_hash(document)

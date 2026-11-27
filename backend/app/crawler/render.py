@@ -3,10 +3,16 @@
 from __future__ import annotations
 
 import re
-from typing import NoReturn
+from collections.abc import Callable
+from typing import NoReturn, Protocol, cast
 from urllib.parse import urlsplit
 
+import structlog
+
+from app.crawler.errors import UnsafeUrlError
 from app.crawler.safety import assert_public_url
+
+logger = structlog.get_logger()
 
 
 class RenderUnavailableError(RuntimeError):
@@ -14,6 +20,44 @@ class RenderUnavailableError(RuntimeError):
 
 
 _UNAVAILABLE = "JavaScript-Rendering ist in dieser Installation nicht verfügbar."
+
+
+class _Locator(Protocol):
+    def inner_text(self, timeout: int) -> object: ...
+
+
+class _Page(Protocol):
+    def route(self, url: str, handler: Callable[[object], None]) -> None: ...
+
+    def goto(self, url: str, *, wait_until: str, timeout: int) -> object: ...
+
+    def locator(self, selector: str) -> _Locator: ...
+
+
+class _Context(Protocol):
+    def new_page(self) -> _Page: ...
+
+    def close(self) -> None: ...
+
+
+class _Browser(Protocol):
+    def new_context(self, *, user_agent: str, accept_downloads: bool) -> _Context: ...
+
+    def close(self) -> None: ...
+
+
+class _BrowserType(Protocol):
+    def launch(self, *, headless: bool) -> _Browser: ...
+
+
+class _Playwright(Protocol):
+    chromium: _BrowserType
+
+    def stop(self) -> None: ...
+
+
+class _PlaywrightStarter(Protocol):
+    def start(self) -> _Playwright: ...
 
 
 def rendered_word_counts(urls: list[str], user_agent: str) -> dict[str, int]:
@@ -42,30 +86,36 @@ def rendered_word_counts(urls: list[str], user_agent: str) -> dict[str, int]:
         playwright.stop()
 
 
-def _start_playwright() -> object:
+def _start_playwright() -> _Playwright:
     try:
         return _playwright_factory()().start()
     except Exception as exc:
+        if _must_propagate(exc):
+            raise
+        # Driver and browser failures are a wide set. Log the type, then hide the message.
+        logger.exception("playwright_start_failed")
         _raise_startup_failure(exc)
 
 
-def _playwright_factory() -> object:
+def _playwright_factory() -> Callable[[], _PlaywrightStarter]:
     try:
         from playwright.sync_api import sync_playwright
     except ImportError as exc:
         raise RenderUnavailableError(_UNAVAILABLE) from exc
-    return sync_playwright
+    return cast(Callable[[], _PlaywrightStarter], sync_playwright)
 
 
-def _launch(playwright: object) -> object:
+def _launch(playwright: _Playwright) -> _Browser:
     try:
-        chromium = getattr(playwright, "chromium")
-        return chromium.launch(headless=True)
+        return playwright.chromium.launch(headless=True)
     except Exception as exc:
+        if _must_propagate(exc):
+            raise
+        logger.exception("playwright_launch_failed")
         _raise_startup_failure(exc)
 
 
-def _count_pages(page: object, urls: list[str]) -> dict[str, int]:
+def _count_pages(page: _Page, urls: list[str]) -> dict[str, int]:
     counts: dict[str, int] = {}
     for url in urls:
         text = _visible_text(page, url)
@@ -75,12 +125,8 @@ def _count_pages(page: object, urls: list[str]) -> dict[str, int]:
     return counts
 
 
-def _install_request_guard(page: object) -> None:
+def _install_request_guard(page: _Page) -> None:
     """Abort browser requests that are not public http(s) URLs, including redirects."""
-
-    route = getattr(page, "route", None)
-    if not callable(route):
-        return
 
     def handler(route_obj: object) -> None:
         request = getattr(route_obj, "request", None)
@@ -94,7 +140,7 @@ def _install_request_guard(page: object) -> None:
                 allowed = parts.scheme in {"http", "https"}
                 if allowed:
                     assert_public_url(target)
-            except Exception:
+            except (UnsafeUrlError, ValueError):
                 allowed = False
         if not allowed:
             if callable(abort):
@@ -103,18 +149,17 @@ def _install_request_guard(page: object) -> None:
         if callable(resume):
             resume()
 
-    route("**/*", handler)
+    page.route("**/*", handler)
 
 
-def _visible_text(page: object, url: str) -> str | None:
+def _visible_text(page: _Page, url: str) -> str | None:
     try:
-        goto = getattr(page, "goto")
-        locator = getattr(page, "locator")
-        goto(url, wait_until="domcontentloaded", timeout=20_000)
-        text = locator("body").inner_text(timeout=5_000)
+        page.goto(url, wait_until="domcontentloaded", timeout=20_000)
+        text = page.locator("body").inner_text(timeout=5_000)
     except Exception as exc:
         if _must_propagate(exc):
             raise
+        logger.exception("render_text_failed")
         return None
     if not isinstance(text, str):
         return None

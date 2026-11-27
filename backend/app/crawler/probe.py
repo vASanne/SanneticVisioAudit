@@ -65,7 +65,7 @@ async def probe_internal_links(
         for link in candidates:
             try:
                 assert_public_url(link)
-            except Exception:
+            except UnsafeUrlError:
                 continue
             if not policy.allowed(user_agent, link):
                 continue

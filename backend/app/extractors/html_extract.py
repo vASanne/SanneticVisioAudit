@@ -54,11 +54,7 @@ def extract_page(page: CrawledPage) -> PageSnapshot:
     soup = BeautifulSoup(html, "lxml") if html else BeautifulSoup("", "lxml")
     title = _clean(soup.title.string) if soup.title and soup.title.string else None
     canonicals = _merged_canonicals(soup, page)
-    h1 = tuple(
-        text
-        for node in soup.find_all("h1")
-        if (text := _clean(node.get_text(" ", strip=True)))
-    )
+    h1 = tuple(text for node in soup.find_all("h1") if (text := _clean(node.get_text(" ", strip=True))))
     links = extract_links(page.body, page.content_type, page.final_url) if is_html else ()
     description = _meta(soup, "description")
     robots = _robots_meta(soup)
@@ -235,7 +231,8 @@ def _meta(soup: BeautifulSoup, name: str) -> str | None:
     for tag in soup.find_all("meta"):
         raw = tag.get("name")
         if isinstance(raw, str) and raw.lower() == name:
-            return _clean(tag.get("content") if isinstance(tag.get("content"), str) else None)
+            content = tag.get("content")
+            return _clean(content if isinstance(content, str) else None)
     return None
 
 

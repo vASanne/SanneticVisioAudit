@@ -22,7 +22,7 @@ def test_none_status_on_fetched_target_is_ignored() -> None:
     soft = page(
         url="https://example.com/soft",
         final_url="https://example.com/soft",
-        status_code=None,  # type: ignore[arg-type]
+        status_code=None,
         links=(),
     )
     result = check_broken_links(context(pages=(home, soft)))

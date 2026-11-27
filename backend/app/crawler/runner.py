@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import asyncio
 from collections import deque
+from collections.abc import Iterable
 from dataclasses import dataclass
 from urllib.parse import urlsplit
 
 import httpx
 import structlog
+from httpcore import SOCKET_OPTION
+from httpcore._backends.base import AsyncNetworkStream
 
 from app.crawler.errors import UnsafeUrlError
 from app.crawler.robots import RobotsPolicy
@@ -128,17 +131,17 @@ class _PinnedTransport(httpx.AsyncHTTPTransport):
                 self,
                 host: str,
                 port: int,
-                timeout: float | None = None,
+                timeout: float | None = None,  # noqa: ASYNC109  # httpcore.AsyncNetworkBackend parameter name
                 local_address: str | None = None,
-                socket_options: object = None,
-            ) -> object:
+                socket_options: Iterable[SOCKET_OPTION] | None = None,
+            ) -> AsyncNetworkStream:
                 pinned = public_connect_host(host)
                 return await super().connect_tcp(
                     pinned,
                     port,
                     timeout=timeout,
                     local_address=local_address,
-                    socket_options=socket_options,  # type: ignore[arg-type]
+                    socket_options=socket_options,
                 )
 
         self._pool._network_backend = _PinnedBackend()
@@ -189,7 +192,7 @@ async def _fetch_robots(client: httpx.AsyncClient, url: str) -> tuple[int | None
     try:
         page = await _fetch(client, url)
     except Exception:
-        logger.warning("robots_fetch_failed", url=url)
+        logger.exception("robots_fetch_failed", url=url)
         return None, None
     if page.error or page.status_code != 200:
         return page.status_code or None, None
@@ -208,7 +211,7 @@ async def _fetch(client: httpx.AsyncClient, url: str) -> CrawledPage:
                 final_url=final_url,
                 status_code=response.status_code,
                 redirect_count=len(response.history),
-                redirect_loop=repeats_document(history + [final_url]),
+                redirect_loop=repeats_document([*history, final_url]),
                 content_type=response.headers.get("content-type", ""),
                 header_robots=", ".join(robots_values) if robots_values else None,
                 body=body,

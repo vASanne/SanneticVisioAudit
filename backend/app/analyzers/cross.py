@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from itertools import pairwise
+
 from app.analyzers.common import Spec, result
 from app.analyzers.seo.technical import page_has_noindex
 from app.crawler.robots import RobotsPolicy
@@ -60,11 +62,7 @@ def check_accessibility(context: SiteContext) -> CheckResult | None:
     pages = [page for page in context.pages if page.is_html and 200 <= page.status_code < 300]
     if not pages:
         return None
-    weak = [
-        page.final_url
-        for page in pages
-        if page.images_missing_alt or _weak_headings(page.heading_levels)
-    ]
+    weak = [page.final_url for page in pages if page.images_missing_alt or _weak_headings(page.heading_levels)]
     if not weak:
         return result(X03, "pass", "Bilder und Überschriften erfüllen die Basisprüfung.")
     if len(weak) == len(pages):
@@ -75,7 +73,7 @@ def check_accessibility(context: SiteContext) -> CheckResult | None:
 def _weak_headings(levels: tuple[int, ...]) -> bool:
     if not levels or levels[0] != 1:
         return True
-    return any(current > previous + 1 for previous, current in zip(levels, levels[1:]))
+    return any(current > previous + 1 for previous, current in pairwise(levels))
 
 
 def check_content_quality(page: PageSnapshot) -> CheckResult:

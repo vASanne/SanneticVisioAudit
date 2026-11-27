@@ -2,3 +2,6 @@
 pytest==9.2.0
 fakeredis[lua]==2.41.0
 lupa==2.8
+ruff==0.17.6
+mypy==2.4.1
+celery-types==0.26.0

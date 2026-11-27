@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
@@ -32,12 +32,12 @@ class SecurityMiddleware(BaseHTTPMiddleware):
         super().__init__(app)  # type: ignore[arg-type]
         self._allowed = {origin.rstrip("/") for origin in allowed_origins}
 
-    async def dispatch(self, request: Request, call_next: object) -> Response:
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         if request.method in _UNSAFE:
             rejection = self._reject_write(request)
             if rejection is not None:
                 return self._finish(request, rejection)
-        response = await call_next(request)  # type: ignore[misc]
+        response = await call_next(request)
         return self._finish(request, response)
 
     def _reject_write(self, request: Request) -> JSONResponse | None:

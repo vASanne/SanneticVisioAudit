@@ -45,7 +45,7 @@ def _create(args: argparse.Namespace) -> int:
     expires_at = None
     if args.expires_at:
         try:
-            expires_at = datetime.fromisoformat(str(args.expires_at).replace("Z", "+00:00"))
+            expires_at = datetime.fromisoformat(str(args.expires_at))
         except ValueError:
             print("expires-at must be ISO-8601", file=sys.stderr)
             return 2

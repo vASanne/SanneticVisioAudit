@@ -7,7 +7,7 @@ rejects the call. The secret is never written to the usage log.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import HTTPException, Request, status
@@ -66,7 +66,7 @@ def authorize(request: Request, db: Session, scope: str) -> AgentPrincipal:
         _event(db, request, presented_key, key if secret_ok else None, "auth_failure", 401)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=_INVALID)
 
-    key.last_used_at = datetime.now(timezone.utc)
+    key.last_used_at = datetime.now(UTC)
     scopes = frozenset(item for item in (key.scopes or []) if isinstance(item, str))
     if scope not in scopes:
         _event(db, request, presented_key, key, "scope_denied", 403)
@@ -111,8 +111,8 @@ def _inactive(key: ApiKey) -> bool:
     if expires is None:
         return False
     if expires.tzinfo is None:
-        expires = expires.replace(tzinfo=timezone.utc)
-    return expires <= datetime.now(timezone.utc)
+        expires = expires.replace(tzinfo=UTC)
+    return expires <= datetime.now(UTC)
 
 
 def _user(db: Session, key: ApiKey | None) -> User | None:

@@ -83,13 +83,13 @@ def _rules_for(groups: tuple[_Group, ...], user_agent: str) -> tuple[_Rule, ...]
 def _specificity(agents: tuple[str, ...], product: str) -> int | None:
     best: int | None = None
     for agent in agents:
-        token = agent.split("/", 1)[0].strip().lower()
-        if not token:
+        agent_name = agent.split("/", 1)[0].strip().lower()
+        if not agent_name:
             continue
-        if token == "*":
+        if agent_name == "*":
             score = 0
-        elif product.startswith(token):
-            score = len(token)
+        elif product.startswith(agent_name):
+            score = len(agent_name)
         else:
             continue
         if best is None or score > best:

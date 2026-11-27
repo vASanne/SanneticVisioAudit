@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -48,7 +48,7 @@ def create_schedule(
     try:
         url = normalize_start_url(payload.url)
         assert_public_url(url)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         next_run = next_run_after(payload.cron, now)
     except UnsafeUrlError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
@@ -96,7 +96,7 @@ def update_schedule(
             schedule.url = url
         if payload.cron is not None:
             schedule.cron = payload.cron
-            schedule.next_run_at = next_run_after(payload.cron, datetime.now(timezone.utc))
+            schedule.next_run_at = next_run_after(payload.cron, datetime.now(UTC))
         if payload.enabled is not None:
             schedule.enabled = payload.enabled
         if payload.config is not None:

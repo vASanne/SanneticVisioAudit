@@ -3,16 +3,13 @@
 from __future__ import annotations
 
 import socket
-from datetime import datetime, timedelta, timezone
+from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
+from typing import Any
 from uuid import UUID
 
 import pytest
 import redis
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, event, select
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
-
 from app.core import rate_limit
 from app.core.api_keys import secret_hash, secret_matches
 from app.core.config import get_settings
@@ -20,16 +17,20 @@ from app.core.security import hash_password
 from app.crawler.safety import assert_public_url
 from app.main import app, create_app
 from app.models import ApiKey, ApiKeyEvent, Audit, Base, Client, Issue, Membership, Score, User
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine, event, select
+from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
 
 _PEPPER = "p" * 32
 _AUTH = "s" * 32
 
 
-def _public(host: str, _port: object, *_args: object, **_kwargs: object) -> list[tuple[object, ...]]:
+def _public(_host: str, _port: object, *_args: object, **_kwargs: object) -> list[tuple[object, ...]]:
     return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 0))]
 
 
-def _private(host: str, _port: object, *_args: object, **_kwargs: object) -> list[tuple[object, ...]]:
+def _private(_host: str, _port: object, *_args: object, **_kwargs: object) -> list[tuple[object, ...]]:
     return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.1.1.1", 0))]
 
 
@@ -43,17 +44,18 @@ class _DownRedis:
 
 
 @pytest.fixture
-def api(monkeypatch: pytest.MonkeyPatch):
+def api(monkeypatch: pytest.MonkeyPatch) -> Iterator[tuple[TestClient, sessionmaker[Session]]]:
     engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
 
     @event.listens_for(engine, "connect")
-    def _fk(dbapi_connection, _record) -> None:  # type: ignore[no-untyped-def]
-        cursor = dbapi_connection.cursor()
+    def _fk(dbapi_connection: object, _record: object) -> None:
+        connection: Any = dbapi_connection
+        cursor = connection.cursor()
         cursor.execute("PRAGMA foreign_keys=ON")
         cursor.close()
 
     Base.metadata.create_all(engine)
-    factory = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
+    factory = sessionmaker[Session](bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
     monkeypatch.setattr("app.core.database.SessionLocal", factory)
     settings = get_settings()
     monkeypatch.setattr(settings, "api_key_pepper", _PEPPER)
@@ -68,7 +70,7 @@ def api(monkeypatch: pytest.MonkeyPatch):
         yield client, factory
 
 
-def _seed(factory: sessionmaker) -> dict[str, UUID]:
+def _seed(factory: sessionmaker[Session]) -> dict[str, UUID]:
     db = factory()
     admin = User(
         email="admin@example.com",
@@ -103,10 +105,15 @@ def _login(client: TestClient, email: str, password: str) -> str:
         headers={"X-CSRF-Token": token, "Origin": "http://127.0.0.1:3000"},
     )
     assert response.status_code == 200, response.text
-    return response.json()["csrf_token"]
+    token = response.json()["csrf_token"]
+    if not isinstance(token, str):
+        raise AssertionError("csrf token missing")
+    return token
 
 
-def _create_api_user(client: TestClient, csrf: str, client_id: UUID, *, scopes: list[str] | None = None) -> dict[str, str]:
+def _create_api_user(
+    client: TestClient, csrf: str, client_id: UUID, *, scopes: list[str] | None = None
+) -> dict[str, str]:
     body: dict[str, object] = {
         "name": "Nightly",
         "is_api_user": True,
@@ -146,7 +153,7 @@ def test_secret_hash_is_peppered_and_compared_in_constant_time(monkeypatch: pyte
     assert secret_matches("vas_example_replace_me", stored) is False
 
 
-def test_missing_wrong_revoked_and_expired_keys_are_rejected(api: tuple[TestClient, sessionmaker]) -> None:
+def test_missing_wrong_revoked_and_expired_keys_are_rejected(api: tuple[TestClient, sessionmaker[Session]]) -> None:
     client, factory = api
     ids = _seed(factory)
     csrf = _login(client, "admin@example.com", "longenough-password")
@@ -178,13 +185,13 @@ def test_missing_wrong_revoked_and_expired_keys_are_rejected(api: tuple[TestClie
     db = factory()
     row = db.get(ApiKey, UUID(fresh["key_row_id"]))
     assert row is not None
-    row.expires_at = datetime.now(timezone.utc) - timedelta(minutes=5)
+    row.expires_at = datetime.now(UTC) - timedelta(minutes=5)
     db.commit()
     db.close()
     assert client.get("/api/v1/agent/audits", headers=_agent(fresh["key_id"], fresh["secret"])).status_code == 401
 
 
-def test_only_admins_can_create_api_users_and_keys(api: tuple[TestClient, sessionmaker]) -> None:
+def test_only_admins_can_create_api_users_and_keys(api: tuple[TestClient, sessionmaker[Session]]) -> None:
     client, factory = api
     ids = _seed(factory)
     member_csrf = _login(client, "member@example.com", "longenough-password")
@@ -242,7 +249,7 @@ def test_only_admins_can_create_api_users_and_keys(api: tuple[TestClient, sessio
     assert new_secret not in client.get("/api/v1/api-keys").text
 
 
-def test_api_user_cannot_open_a_browser_session(api: tuple[TestClient, sessionmaker]) -> None:
+def test_api_user_cannot_open_a_browser_session(api: tuple[TestClient, sessionmaker[Session]]) -> None:
     client, factory = api
     ids = _seed(factory)
     csrf = _login(client, "admin@example.com", "longenough-password")
@@ -266,7 +273,7 @@ def test_api_user_cannot_open_a_browser_session(api: tuple[TestClient, sessionma
     assert status.json()["authenticated"] is False
 
 
-def test_tenant_isolation_and_submit_poll_result(api: tuple[TestClient, sessionmaker]) -> None:
+def test_tenant_isolation_and_submit_poll_result(api: tuple[TestClient, sessionmaker[Session]]) -> None:
     client, factory = api
     ids = _seed(factory)
     csrf = _login(client, "admin@example.com", "longenough-password")
@@ -307,7 +314,7 @@ def test_tenant_isolation_and_submit_poll_result(api: tuple[TestClient, sessionm
     assert audit.config["api_key_id"] == north["key_id"]
     assert north["secret"] not in str(audit.config)
     audit.status = "completed"
-    audit.finished_at = datetime.now(timezone.utc)
+    audit.finished_at = datetime.now(UTC)
     audit.overall_score = 81
     audit.seo_score = 75
     audit.geo_score = 88
@@ -340,7 +347,9 @@ def test_tenant_isolation_and_submit_poll_result(api: tuple[TestClient, sessionm
     assert again.json()["issues"][0]["check_id"] == "T01"
 
 
-def test_ssrf_targets_are_rejected(api: tuple[TestClient, sessionmaker], monkeypatch: pytest.MonkeyPatch) -> None:
+def test_ssrf_targets_are_rejected(
+    api: tuple[TestClient, sessionmaker[Session]], monkeypatch: pytest.MonkeyPatch
+) -> None:
     client, factory = api
     ids = _seed(factory)
     csrf = _login(client, "admin@example.com", "longenough-password")
@@ -362,7 +371,9 @@ def test_ssrf_targets_are_rejected(api: tuple[TestClient, sessionmaker], monkeyp
     db.close()
 
 
-def test_rate_limit_is_per_key_and_fails_closed(api: tuple[TestClient, sessionmaker], monkeypatch: pytest.MonkeyPatch) -> None:
+def test_rate_limit_is_per_key_and_fails_closed(
+    api: tuple[TestClient, sessionmaker[Session]], monkeypatch: pytest.MonkeyPatch
+) -> None:
     client, factory = api
     ids = _seed(factory)
     csrf = _login(client, "admin@example.com", "longenough-password")
@@ -386,7 +397,7 @@ def test_rate_limit_is_per_key_and_fails_closed(api: tuple[TestClient, sessionma
     assert created["secret"] not in down.text
 
 
-def test_idempotency_replays_the_same_audits(api: tuple[TestClient, sessionmaker]) -> None:
+def test_idempotency_replays_the_same_audits(api: tuple[TestClient, sessionmaker[Session]]) -> None:
     client, factory = api
     ids = _seed(factory)
     csrf = _login(client, "admin@example.com", "longenough-password")
@@ -404,7 +415,7 @@ def test_idempotency_replays_the_same_audits(api: tuple[TestClient, sessionmaker
     db.close()
 
 
-def test_scope_and_cookie_are_not_enough(api: tuple[TestClient, sessionmaker]) -> None:
+def test_scope_and_cookie_are_not_enough(api: tuple[TestClient, sessionmaker[Session]]) -> None:
     client, factory = api
     ids = _seed(factory)
     csrf = _login(client, "admin@example.com", "longenough-password")
@@ -422,7 +433,7 @@ def test_scope_and_cookie_are_not_enough(api: tuple[TestClient, sessionmaker]) -
     assert browser.status_code == 401
 
 
-def test_agent_post_does_not_use_the_csrf_cookie(api: tuple[TestClient, sessionmaker]) -> None:
+def test_agent_post_does_not_use_the_csrf_cookie(api: tuple[TestClient, sessionmaker[Session]]) -> None:
     client, factory = api
     ids = _seed(factory)
     csrf = _login(client, "admin@example.com", "longenough-password")
@@ -442,7 +453,9 @@ def test_agent_post_does_not_use_the_csrf_cookie(api: tuple[TestClient, sessionm
     assert rejected.status_code == 403
 
 
-def test_cli_prints_the_secret_once(api: tuple[TestClient, sessionmaker], capfd: pytest.CaptureFixture[str]) -> None:
+def test_cli_prints_the_secret_once(
+    api: tuple[TestClient, sessionmaker[Session]], capfd: pytest.CaptureFixture[str]
+) -> None:
     _client, factory = api
     ids = _seed(factory)
     from app.cli import main
@@ -480,7 +493,9 @@ def test_openapi_includes_the_placeholder_curl_example(monkeypatch: pytest.Monke
     assert "X-Api-Key" in text
 
 
-def test_unhandled_agent_errors_hide_the_trace(api: tuple[TestClient, sessionmaker], monkeypatch: pytest.MonkeyPatch) -> None:
+def test_unhandled_agent_errors_hide_the_trace(
+    api: tuple[TestClient, sessionmaker[Session]], monkeypatch: pytest.MonkeyPatch
+) -> None:
     client, factory = api
     ids = _seed(factory)
     csrf = _login(client, "admin@example.com", "longenough-password")

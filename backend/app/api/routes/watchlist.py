@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -110,7 +111,7 @@ def update_watchlist_item(
     elif item.schedule is not None:
         if cron is not None:
             item.schedule.cron = cron
-            item.schedule.next_run_at = next_run_after(cron, datetime.now(timezone.utc))
+            item.schedule.next_run_at = next_run_after(cron, datetime.now(UTC))
         if config is not None:
             item.schedule.config = dict(config)
         if payload.enabled is not None:
@@ -139,10 +140,10 @@ def _attach_schedule(
     item: WatchlistItem,
     *,
     cron: str,
-    config: dict,
+    config: dict[str, Any],
     enabled: bool,
 ) -> None:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     if item.schedule is None:
         schedule = AuditSchedule(
             client_id=item.client_id,

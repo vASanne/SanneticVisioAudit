@@ -1,5 +1,6 @@
 """FastAPI application."""
 
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 import structlog
@@ -8,10 +9,12 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api.routes.agent import OPENAPI_TAG_DESCRIPTION, router as agent_router
+from app.api.routes.agent import OPENAPI_TAG_DESCRIPTION
+from app.api.routes.agent import router as agent_router
 from app.api.routes.api_keys import router as api_key_router
 from app.api.routes.audits import router as audit_router
-from app.api.routes.auth import ensure_agency_admin, router as auth_router
+from app.api.routes.auth import ensure_agency_admin
+from app.api.routes.auth import router as auth_router
 from app.api.routes.clients import router as client_router
 from app.api.routes.health import router as health_router
 from app.api.routes.schedules import router as schedule_router
@@ -27,7 +30,7 @@ logger = structlog.get_logger()
 
 
 @asynccontextmanager
-async def lifespan(_: FastAPI):
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     setup_logging()
     settings = get_settings()
     if settings.debug:
@@ -86,7 +89,11 @@ def create_app() -> FastAPI:
     @app.exception_handler(RequestValidationError)
     async def validation_error(_: Request, exc: RequestValidationError) -> JSONResponse:
         detail = [
-            {"loc": list(item.get("loc", ())), "msg": str(item.get("msg", "Ungültige Eingabe")), "type": item.get("type")}
+            {
+                "loc": list(item.get("loc", ())),
+                "msg": str(item.get("msg", "Ungültige Eingabe")),
+                "type": item.get("type"),
+            }
             for item in exc.errors()
         ]
         return JSONResponse(status_code=422, content={"detail": detail})
@@ -94,8 +101,10 @@ def create_app() -> FastAPI:
     @app.exception_handler(Exception)
     async def unhandled(_: Request, exc: Exception) -> JSONResponse:
         if isinstance(exc, HTTPException):
-            return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail}, headers=dict(exc.headers or {}))
-        logger.exception("unhandled_error")
+            return JSONResponse(
+                status_code=exc.status_code, content={"detail": exc.detail}, headers=dict(exc.headers or {})
+            )
+        logger.error("unhandled_error", exc_info=exc)
         return JSONResponse(status_code=500, content={"detail": "Interner Fehler."})
 
     @app.get("/", include_in_schema=False)

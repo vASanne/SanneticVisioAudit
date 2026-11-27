@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from collections import Counter
+from itertools import pairwise
 
 from app.analyzers.common import Spec, result
 from app.domain import CheckResult, PageSnapshot
@@ -50,7 +51,7 @@ def check_headings(page: PageSnapshot) -> CheckResult:
         return result(O04, "fail", "Die Seite hat keine Überschriften.", (page.final_url,))
     if levels[0] != 1:
         return result(O04, "warning", "Die erste Überschrift ist keine H1.", (page.final_url,))
-    if any(current > previous + 1 for previous, current in zip(levels, levels[1:])):
+    if any(current > previous + 1 for previous, current in pairwise(levels)):
         return result(O04, "warning", "Die Überschriften überspringen eine Ebene.", (page.final_url,))
     return result(O04, "pass", "Die Überschriften folgen ohne Sprung.")
 
@@ -91,7 +92,11 @@ def check_content_length(page: PageSnapshot) -> CheckResult:
 def check_social_tags(page: PageSnapshot) -> CheckResult:
     """O07: Open Graph title, description, and image are present."""
 
-    present = [name for name, value in (("Titel", page.og_title), ("Beschreibung", page.og_description), ("Bild", page.og_image)) if value]
+    present = [
+        name
+        for name, value in (("Titel", page.og_title), ("Beschreibung", page.og_description), ("Bild", page.og_image))
+        if value
+    ]
     if len(present) == 3 and page.twitter_card:
         return result(O07, "pass", "Open Graph und Twitter-Card sind gesetzt.")
     if len(present) == 3:

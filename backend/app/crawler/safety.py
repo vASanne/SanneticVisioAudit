@@ -11,11 +11,18 @@ import ipaddress
 import re
 import socket
 from collections.abc import Callable
+from typing import cast
 from urllib.parse import urlsplit
 
 from app.crawler.errors import UnsafeUrlError
 
-Resolver = Callable[..., list[tuple[object, ...]]]
+# DNS lookup tests replace. Production calls it as resolver(host, None).
+Resolver = Callable[[str, int | None], list[tuple[object, ...]]]
+
+
+def _default_resolver(host: str, port: int | None, *_args: object, **_kwargs: object) -> list[tuple[object, ...]]:
+    return cast(list[tuple[object, ...]], socket.getaddrinfo(host, port))
+
 
 _BLOCKED_NAMES = {
     "localhost",
@@ -65,7 +72,7 @@ _DOTTED_NUMBERS = re.compile(r"^(\d{1,10})(\.\d{1,10}){0,3}$")
 _HEX_IP = re.compile(r"^(0x[0-9a-f]+)(\.0x[0-9a-f]+)*$", re.IGNORECASE)
 
 
-def assert_public_url(url: str, *, resolver: Resolver = socket.getaddrinfo) -> None:
+def assert_public_url(url: str, *, resolver: Resolver = _default_resolver) -> None:
     """Reject non-public hosts so the crawler cannot be aimed at the internal network."""
 
     if not url or "\\" in url or "\x00" in url or "%00" in url.lower() or "%0a" in url.lower() or "%0d" in url.lower():
@@ -87,7 +94,7 @@ def assert_public_url(url: str, *, resolver: Resolver = socket.getaddrinfo) -> N
     public_connect_host(host, resolver=resolver)
 
 
-def public_connect_host(host: str, *, resolver: Resolver = socket.getaddrinfo) -> str:
+def public_connect_host(host: str, *, resolver: Resolver = _default_resolver) -> str:
     """Return one public address for this host. Every resolved address must be public."""
 
     name = host.lower().rstrip(".")
@@ -116,9 +123,7 @@ def logo_reference_is_safe(url: str) -> bool:
     if _blocked_hostname(host):
         return False
     literal = _literal_address(host)
-    if literal is not None and not _is_public_ip(literal):
-        return False
-    return True
+    return literal is None or _is_public_ip(literal)
 
 
 def _blocked_hostname(host: str) -> bool:
@@ -153,7 +158,12 @@ def _addresses(host: str, resolver: Resolver) -> list[ipaddress.IPv4Address | ip
         raise UnsafeUrlError("Der Hostname konnte nicht aufgelöst werden.") from exc
     addresses: list[ipaddress.IPv4Address | ipaddress.IPv6Address] = []
     for info in infos:
-        raw = info[4][0]
+        if len(info) < 5:
+            continue
+        sockaddr = info[4]
+        if not isinstance(sockaddr, tuple) or not sockaddr:
+            continue
+        raw = sockaddr[0]
         if not isinstance(raw, str):
             continue
         parsed = _literal_address(raw.split("%", 1)[0])

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Mapping, MutableMapping
 from typing import Any
 
 import structlog
@@ -14,9 +15,7 @@ _SENSITIVE_KEY = re.compile(r"(password|secret|token|api_key|authorization|crede
 _URL_USERINFO = re.compile(r"(://[^/\s:@]+:)([^@\s]+)@")
 _BEARER = re.compile(r"(?i)(bearer\s+)[A-Za-z0-9._\-+/=]+")
 _SESSION_COOKIE = re.compile(r"(?i)((?:visioaudit_session|visioaudit_csrf)=)[^;\s]+")
-_ASSIGNMENT = re.compile(
-    r"(?i)(password|secret|token|api_key|authorization)(['\"]?\s*[:=]\s*['\"]?)([^\s,'\"}]+)"
-)
+_ASSIGNMENT = re.compile(r"(?i)(password|secret|token|api_key|authorization)(['\"]?\s*[:=]\s*['\"]?)([^\s,'\"}]+)")
 _API_SECRET_HEADER = re.compile(r"(?i)(x-api-secret['\"]?\s*[:=]\s*['\"]?)([^\s,'\"}]+)")
 _VAS_SECRET = re.compile(r"\bvas_[A-Za-z0-9_-]{6,}\b")
 
@@ -27,11 +26,9 @@ def setup_logging() -> None:
     settings = get_settings()
     level = getattr(logging, settings.log_level.upper(), logging.INFO)
     logging.basicConfig(level=level, format="%(message)s", force=True)
-    renderer: structlog.types.Processor
-    if settings.log_format == "json":
-        renderer = structlog.processors.JSONRenderer()
-    else:
-        renderer = structlog.dev.ConsoleRenderer()
+    renderer: structlog.types.Processor = (
+        structlog.processors.JSONRenderer() if settings.log_format == "json" else structlog.dev.ConsoleRenderer()
+    )
     structlog.configure(
         processors=[
             structlog.contextvars.merge_contextvars,
@@ -49,7 +46,7 @@ def setup_logging() -> None:
     )
 
 
-def _redact(_logger: object, _method: str, event_dict: dict[str, Any]) -> dict[str, Any]:
+def _redact(_logger: Any, _method: str, event_dict: MutableMapping[str, Any]) -> Mapping[str, Any]:
     for key, value in list(event_dict.items()):
         if isinstance(key, str) and _SENSITIVE_KEY.search(key):
             event_dict[key] = "[redacted]"

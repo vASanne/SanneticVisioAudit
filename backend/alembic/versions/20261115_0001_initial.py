@@ -41,7 +41,13 @@ def upgrade() -> None:
     op.create_table(
         "pages",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("audit_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("audits.id", ondelete="CASCADE"), nullable=False, index=True),
+        sa.Column(
+            "audit_id",
+            postgresql.UUID(as_uuid=True),
+            sa.ForeignKey("audits.id", ondelete="CASCADE"),
+            nullable=False,
+            index=True,
+        ),
         sa.Column("position", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("url", sa.Text(), nullable=False),
         sa.Column("final_url", sa.Text(), nullable=True),
@@ -56,8 +62,16 @@ def upgrade() -> None:
     op.create_table(
         "issues",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("audit_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("audits.id", ondelete="CASCADE"), nullable=False, index=True),
-        sa.Column("page_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("pages.id", ondelete="SET NULL"), nullable=True),
+        sa.Column(
+            "audit_id",
+            postgresql.UUID(as_uuid=True),
+            sa.ForeignKey("audits.id", ondelete="CASCADE"),
+            nullable=False,
+            index=True,
+        ),
+        sa.Column(
+            "page_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("pages.id", ondelete="SET NULL"), nullable=True
+        ),
         sa.Column("check_id", sa.String(16), nullable=False),
         sa.Column("severity", sa.String(16), nullable=False),
         sa.Column("title", sa.String(200), nullable=False),
@@ -70,7 +84,13 @@ def upgrade() -> None:
     op.create_table(
         "scores",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("audit_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("audits.id", ondelete="CASCADE"), nullable=False, index=True),
+        sa.Column(
+            "audit_id",
+            postgresql.UUID(as_uuid=True),
+            sa.ForeignKey("audits.id", ondelete="CASCADE"),
+            nullable=False,
+            index=True,
+        ),
         sa.Column("category", sa.String(32), nullable=False),
         sa.Column("score", sa.Float(), nullable=False),
         sa.Column("details", postgresql.JSONB(), nullable=False, server_default=sa.text("'{}'::jsonb")),

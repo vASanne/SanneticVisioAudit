@@ -27,7 +27,14 @@ def test_field_data_wins_over_lab_and_cls_is_scaled() -> None:
 
 def test_lab_fallback_and_poor_lcp_fails() -> None:
     facts = parse_pagespeed(
-        {"lighthouseResult": {"audits": {"largest-contentful-paint": {"numericValue": 5200}, "cumulative-layout-shift": {"numericValue": 0.02}}}}
+        {
+            "lighthouseResult": {
+                "audits": {
+                    "largest-contentful-paint": {"numericValue": 5200},
+                    "cumulative-layout-shift": {"numericValue": 0.02},
+                }
+            }
+        }
     )
     assert facts is not None
     assert facts.source == "lab"

@@ -4,11 +4,10 @@ from __future__ import annotations
 
 import fakeredis
 import redis
-from fastapi.testclient import TestClient
-
 from app.core import rate_limit
 from app.core.rate_limit import RateLimitUnavailable, allow
 from app.main import app
+from fastapi.testclient import TestClient
 
 
 class _DownRedis:

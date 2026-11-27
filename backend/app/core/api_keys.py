@@ -19,7 +19,7 @@ import zlib
 from app.core.config import get_settings
 
 KEY_PREFIX = "vak_"
-SECRET_PREFIX = "vas_"
+VAS_PREFIX = "vas_"
 _KEY_ID = re.compile(r"^vak_[A-Za-z0-9_-]{16,64}$")
 _MAX_SECRET_LENGTH = 200
 _DUMMY_HASH = "0" * 64
@@ -41,7 +41,7 @@ def generate_key_id() -> str:
 
 
 def generate_secret() -> str:
-    return SECRET_PREFIX + secrets.token_urlsafe(32)
+    return VAS_PREFIX + secrets.token_urlsafe(32)
 
 
 def is_key_id(value: str) -> bool:

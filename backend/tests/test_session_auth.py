@@ -5,15 +5,14 @@ from __future__ import annotations
 from uuid import uuid4
 
 import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
-
 from app.core.config import get_settings
 from app.core.security import AuthUser, issue_token
 from app.main import app
 from app.models import User
+from fastapi.testclient import TestClient
+from sqlalchemy import Table, create_engine
+from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
 
 _SECRET = "s" * 32
 
@@ -78,8 +77,11 @@ def test_login_sets_httponly_cookie_and_logout_clears_it(monkeypatch: pytest.Mon
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
-    User.__table__.create(engine)
-    factory = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
+    table = User.__table__
+    if not isinstance(table, Table):
+        raise AssertionError("users table is missing")
+    table.create(engine)
+    factory = sessionmaker[Session](bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
     monkeypatch.setattr("app.core.database.SessionLocal", factory)
     settings = get_settings()
     monkeypatch.setattr(settings, "auth_secret", _SECRET)
